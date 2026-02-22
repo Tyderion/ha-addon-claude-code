@@ -1,6 +1,7 @@
 ---
 name: EditDashboard
-description: Manage Home Assistant Lovelace dashboards via the WebSocket API — get,
+description:
+  Manage Home Assistant Lovelace dashboards via the WebSocket API — get,
   set, create, delete, and update. USE for any dashboard operation. NEVER edit
   .storage/lovelace.* files directly — they will go stale.
 ---
@@ -34,20 +35,20 @@ ha-dashboard update <url_path> [options]             # Update metadata only
 
 ### create / update options
 
-| Flag | Meaning | Default |
-|------|---------|---------|
-| `--icon mdi:NAME` | MDI icon | `mdi:view-dashboard` (create only) |
-| `--show` / `--hidden` | Sidebar visibility | shown (create), unchanged (update) |
-| `--admin` / `--no-admin` | Require admin | false (create), unchanged (update) |
-| `--title TITLE` | Display name | — (update only) |
+| Flag                     | Meaning            | Default                            |
+| ------------------------ | ------------------ | ---------------------------------- |
+| `--icon mdi:NAME`        | MDI icon           | `mdi:view-dashboard` (create only) |
+| `--show` / `--hidden`    | Sidebar visibility | shown (create), unchanged (update) |
+| `--admin` / `--no-admin` | Require admin      | false (create), unchanged (update) |
+| `--title TITLE`          | Display name       | — (update only)                    |
 
 ## Known Dashboard URL Paths
 
-| URL Path                  | Title               |
-|---------------------------|---------------------|
-| `dashboard-mobile`        | Mobile              |
-| `dashboard-temperatures`  | Temperatures        |
-| `map`                     | Map                 |
+| URL Path                 | Title        |
+| ------------------------ | ------------ |
+| `dashboard-mobile`       | Mobile       |
+| `dashboard-temperatures` | Temperatures |
+| `map`                    | Map          |
 
 (Run `ha-dashboard list` to get the current authoritative list.)
 
