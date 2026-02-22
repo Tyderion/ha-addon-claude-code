@@ -1,13 +1,13 @@
 ---
 name: EditDashboard
-description: Get/set Home Assistant Lovelace dashboard configs via the WebSocket API.
-  USE when the user asks to edit, update, add, or remove anything on a dashboard.
-  NEVER edit .storage/lovelace.* files directly — they will go stale.
+description: Manage Home Assistant Lovelace dashboards via the WebSocket API — get,
+  set, create, delete, and update. USE for any dashboard operation. NEVER edit
+  .storage/lovelace.* files directly — they will go stale.
 ---
 
 # EditDashboard
 
-Use `ha-dashboard` to safely read and write Lovelace dashboard configs through the HA WebSocket API — the same path the frontend uses. This avoids stale-data overwrites.
+Use `ha-dashboard` to manage Lovelace dashboards through the HA WebSocket API — the same path the frontend uses. This avoids stale-data overwrites.
 
 ## One-Time Setup
 
@@ -21,15 +21,25 @@ A long-lived HA access token is required:
    chmod 600 /homeassistant/.claude/ha_token
    ```
 
-The token is then used automatically by all `ha-dashboard` calls.
-
 ## Commands
 
 ```bash
-ha-dashboard list                   # List all dashboards (url_path + title)
-ha-dashboard get <url_path>         # Print config JSON to stdout
-ha-dashboard set <url_path>         # Read JSON from stdin and save to HA
+ha-dashboard list                                    # List all dashboards
+ha-dashboard get <url_path>                          # Print config JSON to stdout
+ha-dashboard set <url_path>                          # Read JSON from stdin and save
+ha-dashboard create <url_path> <title> [options]     # Create a new empty dashboard
+ha-dashboard delete <url_path>                       # Delete a dashboard (permanent)
+ha-dashboard update <url_path> [options]             # Update metadata only
 ```
+
+### create / update options
+
+| Flag | Meaning | Default |
+|------|---------|---------|
+| `--icon mdi:NAME` | MDI icon | `mdi:view-dashboard` (create only) |
+| `--show` / `--hidden` | Sidebar visibility | shown (create), unchanged (update) |
+| `--admin` / `--no-admin` | Require admin | false (create), unchanged (update) |
+| `--title TITLE` | Display name | — (update only) |
 
 ## Known Dashboard URL Paths
 
@@ -41,30 +51,51 @@ ha-dashboard set <url_path>         # Read JSON from stdin and save to HA
 
 (Run `ha-dashboard list` to get the current authoritative list.)
 
-## Workflow for Editing a Dashboard
+## Workflow: Edit Config
 
-Always follow this pattern — GET current config, modify, SET back:
+Always GET first, modify, then SET back:
 
 ```bash
-# 1. Get current config
 ha-dashboard get dashboard-mobile > /tmp/dashboard.json
-
-# 2. Inspect it
-python3 -m json.tool /tmp/dashboard.json | head -50
-
-# 3. Make targeted edits to /tmp/dashboard.json using the Edit tool
-
-# 4. Validate JSON before saving
+# edit /tmp/dashboard.json with Edit tool
 python3 -m json.tool /tmp/dashboard.json > /dev/null && echo "JSON valid"
-
-# 5. Save back to HA
 ha-dashboard set dashboard-mobile < /tmp/dashboard.json
+```
+
+## Workflow: Create a New Dashboard
+
+```bash
+# 1. Register the dashboard
+ha-dashboard create my-new-dash "My Dashboard" --icon mdi:home
+
+# 2. Build its config and push it
+ha-dashboard get dashboard-mobile > /tmp/new.json   # start from an existing one, or build from scratch
+# edit /tmp/new.json
+ha-dashboard set my-new-dash < /tmp/new.json
+```
+
+## Workflow: Delete a Dashboard
+
+```bash
+ha-dashboard delete my-new-dash
+```
+
+Deletion is **permanent** — the dashboard registration and all its card config are removed.
+
+## Workflow: Rename / Update Metadata
+
+```bash
+ha-dashboard update dashboard-mobile --title "Phone" --icon mdi:phone
+ha-dashboard update my-dash --hidden          # remove from sidebar
+ha-dashboard update my-dash --show --admin    # restore + require admin
 ```
 
 ## Rules
 
-- **Always GET first** — never construct a config from scratch or from a stale file read
+- **Always GET first** before editing config — never use stale file reads
 - **Never write `.storage/lovelace.*` files directly** — HA's in-memory state won't update
-- **Validate JSON** before calling `set` to avoid corrupting the dashboard
-- Use a temp file (`/tmp/dashboard.json`) as the working copy
-- After `set`, the change is live immediately — no reload needed
+- **Validate JSON** before calling `set`
+- `create` makes an empty dashboard — always follow with `set` to add cards
+- `update` only changes metadata (title, icon, sidebar, admin); use `set` for card changes
+- `dashboard_id` (internal HA concept) is derived automatically from `url_path` — never needed in commands
+- Changes are live immediately after `set`, `create`, `delete`, or `update` — no reload needed
