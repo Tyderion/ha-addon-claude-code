@@ -44,9 +44,10 @@ ha-dashboard update <url_path> [options]             # Update metadata only
 
 ## Workflow: Edit Config
 
-Always GET first, modify, then SET back:
+Always LIST first to find the correct `url_path`, then GET, modify, and SET back:
 
 ```bash
+ha-dashboard list                                      # find the correct url_path
 ha-dashboard get dashboard-name > /tmp/dashboard.json
 # edit /tmp/dashboard.json with Edit tool
 python3 -m json.tool /tmp/dashboard.json > /dev/null && echo "JSON valid"
