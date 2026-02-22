@@ -42,25 +42,15 @@ ha-dashboard update <url_path> [options]             # Update metadata only
 | `--admin` / `--no-admin` | Require admin      | false (create), unchanged (update) |
 | `--title TITLE`          | Display name       | — (update only)                    |
 
-## Known Dashboard URL Paths
-
-| URL Path                 | Title        |
-| ------------------------ | ------------ |
-| `dashboard-mobile`       | Mobile       |
-| `dashboard-temperatures` | Temperatures |
-| `map`                    | Map          |
-
-(Run `ha-dashboard list` to get the current authoritative list.)
-
 ## Workflow: Edit Config
 
 Always GET first, modify, then SET back:
 
 ```bash
-ha-dashboard get dashboard-mobile > /tmp/dashboard.json
+ha-dashboard get dashboard-name > /tmp/dashboard.json
 # edit /tmp/dashboard.json with Edit tool
 python3 -m json.tool /tmp/dashboard.json > /dev/null && echo "JSON valid"
-ha-dashboard set dashboard-mobile < /tmp/dashboard.json
+ha-dashboard set dashboard-name < /tmp/dashboard.json
 ```
 
 ## Workflow: Create a New Dashboard
@@ -70,7 +60,7 @@ ha-dashboard set dashboard-mobile < /tmp/dashboard.json
 ha-dashboard create my-new-dash "My Dashboard" --icon mdi:home
 
 # 2. Build its config and push it
-ha-dashboard get dashboard-mobile > /tmp/new.json   # start from an existing one, or build from scratch
+ha-dashboard get dashboard-name > /tmp/new.json   # start from an existing one, or build from scratch
 # edit /tmp/new.json
 ha-dashboard set my-new-dash < /tmp/new.json
 ```
@@ -86,7 +76,7 @@ Deletion is **permanent** — the dashboard registration and all its card config
 ## Workflow: Rename / Update Metadata
 
 ```bash
-ha-dashboard update dashboard-mobile --title "Phone" --icon mdi:phone
+ha-dashboard update dashboard-name --title "Phone" --icon mdi:phone
 ha-dashboard update my-dash --hidden          # remove from sidebar
 ha-dashboard update my-dash --show --admin    # restore + require admin
 ```
