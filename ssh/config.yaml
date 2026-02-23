@@ -1,7 +1,7 @@
 ---
 name: SSH & Claude Code Terminal
 version: dev
-slug: ssh
+slug: claude
 description: SSH & Web Terminal with Claude Code for AI-assisted Home Assistant configuration
 url: https://github.com/jantimon/ha-addon-ssh
 startup: services
@@ -10,7 +10,7 @@ ingress_port: 0
 ingress_stream: true
 init: false
 panel_icon: mdi:console
-panel_title: Terminal
+panel_title: Claude
 homeassistant: 0.92.0b2
 arch:
   - aarch64
