@@ -87,7 +87,7 @@ ha-dashboard update my-dash --show --admin    # restore + require admin
 - **Always LIST first** before any get/set/delete/update — never assume the exact `url_path`, the user may use a short or approximate name
 - **Always GET first** before editing config — never use stale file reads
 - **Never write `.storage/lovelace.*` files directly** — HA's in-memory state won't update
-- **JSON is validated automatically** — `set` validates input before pushing (no need for manual `python3 -m json.tool`)
+- **Do NOT validate JSON manually** — never run `python3 -m json.tool`, `jq`, or any other validation command. The `set` command already validates input before pushing and will report errors if the JSON is invalid.
 - `create` makes an empty dashboard — always follow with `set` to add cards
 - `update` only changes metadata (title, icon, sidebar, admin); use `set` for card changes
 - `dashboard_id` (internal HA concept) is derived automatically from `url_path` — never needed in commands
