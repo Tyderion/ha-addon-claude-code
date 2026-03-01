@@ -5,7 +5,7 @@ platforms = ["linux-64", "osx-arm64"]
 
 [dependencies]
 nodejs = ">=20"
-shfmt = ">=3"
+go-shfmt = ">=3"
 ruff = ">=0.4"
 
 [tasks]
@@ -13,7 +13,7 @@ fmt = { depends-on = ["fmt-md", "fmt-sh", "fmt-py"] }
 fmt-check = { depends-on = ["fmt-check-md", "fmt-check-sh", "fmt-check-py"] }
 fmt-md = "npx prettier --write '**/*.md'"
 fmt-check-md = "npx prettier --check '**/*.md'"
-fmt-sh = "shfmt -w -i 4 -bn -ci -sr ."
-fmt-check-sh = "shfmt -d -i 4 -bn -ci -sr ."
-fmt-py = "ruff format ."
-fmt-check-py = "ruff check --select I --fix . && ruff format --check ."
+fmt-sh = "shfmt -w -i 4 -bn -ci -sr ssh/"
+fmt-check-sh = "shfmt -d -i 4 -bn -ci -sr ssh/"
+fmt-py = "ruff format ssh/"
+fmt-check-py = "ruff check --select I --fix ssh/ && ruff format --check ssh/"
