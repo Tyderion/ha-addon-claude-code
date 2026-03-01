@@ -112,7 +112,7 @@ ln -s "${CLAUDE_PERSISTENT_PATH}" "${CLAUDE_PATH}"
 
 # Persist .claude.json (stores onboarding state, theme, etc.)
 if ! bashio::fs.file_exists "${CLAUDE_PERSISTENT_JSON}"; then
-    touch "${CLAUDE_PERSISTENT_JSON}"
+    echo '{}' > "${CLAUDE_PERSISTENT_JSON}"
 fi
 ln -s "${CLAUDE_PERSISTENT_JSON}" "${CLAUDE_JSON}"
 
