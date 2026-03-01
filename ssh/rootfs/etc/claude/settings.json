@@ -27,6 +27,9 @@
       "Bash(curl -s http://supervisor/*)",
       "Bash(ha-reload)",
       "Bash(ha-dashboard *)",
+      "Read(//tmp/*.json)",
+      "Edit(//tmp/*.json)",
+      "Write(//tmp/*.json)",
       "Bash(bluetoothctl *)"
     ],
     "deny": []
