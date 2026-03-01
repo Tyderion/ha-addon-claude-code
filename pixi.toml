@@ -1,0 +1,11 @@
+[workspace]
+name = "ha-addon-ssh"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64"]
+
+[dependencies]
+nodejs = ">=20"
+
+[tasks]
+fmt = "npx prettier --write '**/*.md'"
+fmt-check = "npx prettier --check '**/*.md'"
