@@ -204,12 +204,19 @@ def cmd_get(url_path: str):
     print(json.dumps(result["result"], indent=2))
 
 
-def cmd_set(url_path: str):
+def _validate_json(raw: str) -> dict:
+    """Parse and validate JSON (same behaviour as `python3 -m json.tool`)."""
     try:
-        config = json.load(sys.stdin)
+        obj = json.loads(raw)
     except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON from stdin: {e}", file=sys.stderr)
+        print(f"Error: Invalid JSON: {e}", file=sys.stderr)
         sys.exit(1)
+    return obj
+
+
+def cmd_set(url_path: str):
+    raw = sys.stdin.read()
+    config = _validate_json(raw)
     cmd = {"type": "lovelace/config/save", "config": config}
     if url_path != "default":
         cmd["url_path"] = url_path

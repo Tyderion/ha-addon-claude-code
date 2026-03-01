@@ -50,8 +50,7 @@ Always LIST first to find the correct `url_path`, then GET, modify, and SET back
 ha-dashboard list                                      # find the correct url_path
 ha-dashboard get dashboard-name > /tmp/dashboard.json
 # edit /tmp/dashboard.json with Edit tool
-python3 -m json.tool /tmp/dashboard.json > /dev/null && echo "JSON valid"
-ha-dashboard set dashboard-name < /tmp/dashboard.json
+ha-dashboard set dashboard-name < /tmp/dashboard.json   # JSON is validated before push
 ```
 
 ## Workflow: Create a New Dashboard
@@ -86,7 +85,7 @@ ha-dashboard update my-dash --show --admin    # restore + require admin
 
 - **Always GET first** before editing config — never use stale file reads
 - **Never write `.storage/lovelace.*` files directly** — HA's in-memory state won't update
-- **Validate JSON** before calling `set`
+- **JSON is validated automatically** — `set` validates input before pushing (no need for manual `python3 -m json.tool`)
 - `create` makes an empty dashboard — always follow with `set` to add cards
 - `update` only changes metadata (title, icon, sidebar, admin); use `set` for card changes
 - `dashboard_id` (internal HA concept) is derived automatically from `url_path` — never needed in commands
