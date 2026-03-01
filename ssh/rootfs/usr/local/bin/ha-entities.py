@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""ha-entities — Query Home Assistant entity states, areas, and domains.
+"""ha-entities — Query Home Assistant entity states, areas, domains, and scripts.
 
 Usage:
   ha-entities list [--domain DOMAIN] [--area AREA] [--state STATE] [--limit N]
   ha-entities get <entity_id> [<entity_id> ...]
   ha-entities domains
   ha-entities areas
+  ha-entities scripts
 """
 
 import argparse
@@ -276,6 +277,34 @@ def cmd_areas(args):
     print_output(output, args.format)
 
 
+def cmd_scripts(args):
+    states_result = ha_call({"type": "get_states"})
+    states = states_result.get("result", [])
+
+    # Filter to script entities only
+    scripts = [s for s in states if s["entity_id"].startswith("script.")]
+
+    # Sort by friendly_name/alias for easier reading
+    scripts.sort(key=lambda s: s.get("attributes", {}).get("friendly_name", s["entity_id"]).lower())
+
+    output_scripts = []
+    for s in scripts:
+        attrs = s.get("attributes", {})
+        output_scripts.append({
+            "entity_id": s["entity_id"],
+            "alias": attrs.get("friendly_name", s["entity_id"]),
+            "state": s["state"],  # 'on' = running, 'off' = idle
+            "mode": attrs.get("mode"),
+            "last_triggered": attrs.get("last_triggered"),
+        })
+
+    output = {
+        "count": len(output_scripts),
+        "scripts": output_scripts,
+    }
+    print_output(output, args.format)
+
+
 def main():
     fmt_kwargs = dict(args=["--format"], kwargs=dict(
         choices=["toon", "json"], default="toon", help="Output format (default: toon)"
@@ -305,6 +334,9 @@ def main():
     p_areas = sub.add_parser("areas", help="List all areas with entity counts")
     p_areas.add_argument(*fmt_kwargs["args"], **fmt_kwargs["kwargs"])
 
+    p_scripts = sub.add_parser("scripts", help="List all scripts with their aliases")
+    p_scripts.add_argument(*fmt_kwargs["args"], **fmt_kwargs["kwargs"])
+
     args = parser.parse_args()
 
     if args.command == "list":
@@ -315,6 +347,8 @@ def main():
         cmd_domains(args)
     elif args.command == "areas":
         cmd_areas(args)
+    elif args.command == "scripts":
+        cmd_scripts(args)
 
 
 if __name__ == "__main__":
