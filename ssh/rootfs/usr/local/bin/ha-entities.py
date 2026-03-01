@@ -26,12 +26,15 @@ def print_output(data, fmt):
     else:
         result = subprocess.run(
             ["npx", "--yes", "@toon-format/cli"],
-            input=json_str, capture_output=True, text=True,
+            input=json_str,
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0:
             print(json_str)  # fall back to JSON on error
         else:
             print(result.stdout, end="")
+
 
 # Key attributes to extract per domain (token-efficient output)
 KEY_ATTR_MAP = {
@@ -59,10 +62,17 @@ KEY_ATTR_MAP = {
 }
 
 # Attributes to strip from unknown domains
-NOISE_ATTRS = frozenset({
-    "friendly_name", "icon", "entity_picture", "supported_features",
-    "attribution", "restored", "access_token",
-})
+NOISE_ATTRS = frozenset(
+    {
+        "friendly_name",
+        "icon",
+        "entity_picture",
+        "supported_features",
+        "attribution",
+        "restored",
+        "access_token",
+    }
+)
 
 
 def fetch_all_data():
@@ -162,7 +172,11 @@ def cmd_list(args):
         filtered = [s for s in filtered if s["entity_id"].startswith(args.domain + ".")]
     if args.area:
         area_lower = args.area.lower()
-        filtered = [s for s in filtered if entity_areas.get(s["entity_id"], "").lower() == area_lower]
+        filtered = [
+            s
+            for s in filtered
+            if entity_areas.get(s["entity_id"], "").lower() == area_lower
+        ]
     if args.state:
         filtered = [s for s in filtered if s["state"] == args.state]
 
@@ -173,7 +187,7 @@ def cmd_list(args):
 
     # Apply limit
     if args.limit and args.limit > 0:
-        filtered = filtered[:args.limit]
+        filtered = filtered[: args.limit]
 
     entities = []
     for s in filtered:
@@ -243,9 +257,7 @@ def cmd_domains(args):
         domain_counts[domain] = domain_counts.get(domain, 0) + 1
 
     domains = sorted(domain_counts.items(), key=lambda x: -x[1])
-    output = {
-        "domains": [{"domain": d, "count": c} for d, c in domains]
-    }
+    output = {"domains": [{"domain": d, "count": c} for d, c in domains]}
     print_output(output, args.format)
 
 
@@ -285,18 +297,24 @@ def cmd_scripts(args):
     scripts = [s for s in states if s["entity_id"].startswith("script.")]
 
     # Sort by friendly_name/alias for easier reading
-    scripts.sort(key=lambda s: s.get("attributes", {}).get("friendly_name", s["entity_id"]).lower())
+    scripts.sort(
+        key=lambda s: (
+            s.get("attributes", {}).get("friendly_name", s["entity_id"]).lower()
+        )
+    )
 
     output_scripts = []
     for s in scripts:
         attrs = s.get("attributes", {})
-        output_scripts.append({
-            "entity_id": s["entity_id"],
-            "alias": attrs.get("friendly_name", s["entity_id"]),
-            "state": s["state"],  # 'on' = running, 'off' = idle
-            "mode": attrs.get("mode"),
-            "last_triggered": attrs.get("last_triggered"),
-        })
+        output_scripts.append(
+            {
+                "entity_id": s["entity_id"],
+                "alias": attrs.get("friendly_name", s["entity_id"]),
+                "state": s["state"],  # 'on' = running, 'off' = idle
+                "mode": attrs.get("mode"),
+                "last_triggered": attrs.get("last_triggered"),
+            }
+        )
 
     output = {
         "count": len(output_scripts),
@@ -306,9 +324,14 @@ def cmd_scripts(args):
 
 
 def main():
-    fmt_kwargs = dict(args=["--format"], kwargs=dict(
-        choices=["toon", "json"], default="toon", help="Output format (default: toon)"
-    ))
+    fmt_kwargs = dict(
+        args=["--format"],
+        kwargs=dict(
+            choices=["toon", "json"],
+            default="toon",
+            help="Output format (default: toon)",
+        ),
+    )
 
     parser = argparse.ArgumentParser(
         prog="ha-entities",
@@ -318,10 +341,16 @@ def main():
     sub.required = True
 
     p_list = sub.add_parser("list", help="List entities with optional filters")
-    p_list.add_argument("--domain", default=None, help="Filter by domain (e.g. light, sensor)")
+    p_list.add_argument(
+        "--domain", default=None, help="Filter by domain (e.g. light, sensor)"
+    )
     p_list.add_argument("--area", default=None, help="Filter by area name")
-    p_list.add_argument("--state", default=None, help="Filter by state value (e.g. on, off)")
-    p_list.add_argument("--limit", type=int, default=None, help="Limit number of results")
+    p_list.add_argument(
+        "--state", default=None, help="Filter by state value (e.g. on, off)"
+    )
+    p_list.add_argument(
+        "--limit", type=int, default=None, help="Limit number of results"
+    )
     p_list.add_argument(*fmt_kwargs["args"], **fmt_kwargs["kwargs"])
 
     p_get = sub.add_parser("get", help="Get full details for specific entities")

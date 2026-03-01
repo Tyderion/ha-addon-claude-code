@@ -1,6 +1,7 @@
 ---
 name: HAEntities
-description: Query Home Assistant entity states, areas, domains, and scripts. ALWAYS
+description:
+  Query Home Assistant entity states, areas, domains, and scripts. ALWAYS
   use this skill instead of calling the HA REST or WebSocket API directly, reading
   .storage files, or asking the user for entity IDs. Use before writing any automation,
   script, or dashboard that references entities.
@@ -54,19 +55,25 @@ ha-entities scripts
 ## Output Format
 
 ### `list` — Token-efficient summary
+
 Returns count, filtered_count, applied filters, and an array of entities with:
+
 - `entity_id`, `name`, `area`, `state`, `key_attr` (domain-specific important attributes)
 
 ### `get` — Full entity details
+
 Returns all attributes, last_changed, last_updated, domain, area, name.
 
 ### `domains` — Domain summary
+
 Returns array of `{domain, count}` sorted by count descending.
 
 ### `areas` — Area summary
+
 Returns array of `{area_id, name, entity_count}` sorted by count descending.
 
 ### `scripts` — Script listing
+
 Returns array of `{entity_id, alias, state, mode, last_triggered}` sorted by alias alphabetically. State is `on` (running) or `off` (idle).
 
 ## When to Use
