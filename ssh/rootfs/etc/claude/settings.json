@@ -26,6 +26,7 @@
       "Bash(curl -s -X GET http://supervisor/*)",
       "Bash(curl -s http://supervisor/*)",
       "Bash(ha-reload)",
+      "Bash(ha-entities *)",
       "Bash(ha-dashboard *)",
       "Bash(bluetoothctl *)"
     ],
