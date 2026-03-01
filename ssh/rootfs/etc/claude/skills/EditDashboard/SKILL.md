@@ -83,6 +83,7 @@ ha-dashboard update my-dash --show --admin    # restore + require admin
 
 ## Rules
 
+- **Always save dashboard JSON to `/tmp/`** — use `/tmp/<url_path>.json` as the working file (e.g. `/tmp/dashboard-name.json`). You have read/edit/write permissions for `/tmp/*.json`.
 - **Always GET first** before editing config — never use stale file reads
 - **Never write `.storage/lovelace.*` files directly** — HA's in-memory state won't update
 - **JSON is validated automatically** — `set` validates input before pushing (no need for manual `python3 -m json.tool`)
