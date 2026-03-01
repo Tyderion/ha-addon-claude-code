@@ -131,6 +131,24 @@ You have several options to get them answered:
 
 You could also [open an issue here][issue] GitHub.
 
+## Development
+
+This project uses [pixi](https://pixi.sh) for developer tooling.
+
+**Format all files (markdown, shell scripts, Python):**
+
+```sh
+pixi run fmt
+```
+
+**Check formatting without writing changes:**
+
+```sh
+pixi run fmt-check
+```
+
+You can also format individually: `pixi run fmt-md`, `pixi run fmt-sh`, `pixi run fmt-py`.
+
 ## Contributing
 
 This is an active open-source project. We are always open to people who want to
