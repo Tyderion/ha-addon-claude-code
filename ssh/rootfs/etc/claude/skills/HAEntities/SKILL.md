@@ -1,15 +1,15 @@
 ---
 name: HAEntities
 description:
-  Query Home Assistant entity states, areas, domains, and scripts. ALWAYS
-  use this skill instead of calling the HA REST or WebSocket API directly, reading
-  .storage files, or asking the user for entity IDs. Use before writing any automation,
-  script, or dashboard that references entities.
+  Query Home Assistant entity states, areas, domains, scripts, and automations.
+  ALWAYS use this skill instead of calling the HA REST or WebSocket API directly,
+  reading .storage files, or asking the user for entity IDs. Use before writing any
+  automation, script, or dashboard that references entities.
 ---
 
 # HAEntities
 
-Use `ha-entities` to query Home Assistant entity states, areas, domains, and scripts over the WebSocket API.
+Use `ha-entities` to query Home Assistant entity states, areas, domains, scripts, and automations over the WebSocket API.
 
 ## Commands
 
@@ -19,6 +19,7 @@ ha-entities get <entity_id> [<entity_id> ...]
 ha-entities domains
 ha-entities areas
 ha-entities scripts
+ha-entities automations
 ```
 
 ## Examples
@@ -50,6 +51,9 @@ ha-entities list --domain sensor --area "Living Room" --limit 5
 
 # List all scripts with their aliases
 ha-entities scripts
+
+# List all automations with their aliases
+ha-entities automations
 ```
 
 ## Output Format
@@ -76,6 +80,10 @@ Returns array of `{area_id, name, entity_count}` sorted by count descending.
 
 Returns array of `{entity_id, alias, state, mode, last_triggered}` sorted by alias alphabetically. State is `on` (running) or `off` (idle).
 
+### `automations` — Automation listing
+
+Returns array of `{entity_id, alias, state, mode, last_triggered}` sorted by alias alphabetically. State is `on` (enabled) or `off` (disabled).
+
 ## When to Use
 
 - **Before writing automations**: find entity IDs, check current states, discover available entities
@@ -83,6 +91,7 @@ Returns array of `{entity_id, alias, state, mode, last_triggered}` sorted by ali
 - **Debugging**: check entity states, verify entity existence
 - **Discovery**: explore what domains/areas/entities are available
 - **Finding scripts**: use `scripts` to list all scripts with their entity_id and alias (useful for scripts with numeric IDs)
+- **Finding automations**: use `automations` to list all automations with their entity_id, alias, and state (enabled/disabled)
 
 ## Tips
 

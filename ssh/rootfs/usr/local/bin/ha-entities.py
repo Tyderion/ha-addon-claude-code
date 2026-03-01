@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ha-entities — Query Home Assistant entity states, areas, domains, and scripts.
+"""ha-entities — Query Home Assistant entity states, areas, domains, scripts, and automations.
 
 Usage:
   ha-entities list [--domain DOMAIN] [--area AREA] [--state STATE] [--limit N]
@@ -7,6 +7,7 @@ Usage:
   ha-entities domains
   ha-entities areas
   ha-entities scripts
+  ha-entities automations
 """
 
 import argparse
@@ -323,6 +324,40 @@ def cmd_scripts(args):
     print_output(output, args.format)
 
 
+def cmd_automations(args):
+    states_result = ha_call({"type": "get_states"})
+    states = states_result.get("result", [])
+
+    # Filter to automation entities only
+    automations = [s for s in states if s["entity_id"].startswith("automation.")]
+
+    # Sort by friendly_name/alias for easier reading
+    automations.sort(
+        key=lambda s: (
+            s.get("attributes", {}).get("friendly_name", s["entity_id"]).lower()
+        )
+    )
+
+    output_automations = []
+    for s in automations:
+        attrs = s.get("attributes", {})
+        output_automations.append(
+            {
+                "entity_id": s["entity_id"],
+                "alias": attrs.get("friendly_name", s["entity_id"]),
+                "state": s["state"],  # 'on' = enabled, 'off' = disabled
+                "mode": attrs.get("mode"),
+                "last_triggered": attrs.get("last_triggered"),
+            }
+        )
+
+    output = {
+        "count": len(output_automations),
+        "automations": output_automations,
+    }
+    print_output(output, args.format)
+
+
 def main():
     fmt_kwargs = dict(
         args=["--format"],
@@ -366,6 +401,11 @@ def main():
     p_scripts = sub.add_parser("scripts", help="List all scripts with their aliases")
     p_scripts.add_argument(*fmt_kwargs["args"], **fmt_kwargs["kwargs"])
 
+    p_automations = sub.add_parser(
+        "automations", help="List all automations with their aliases"
+    )
+    p_automations.add_argument(*fmt_kwargs["args"], **fmt_kwargs["kwargs"])
+
     args = parser.parse_args()
 
     if args.command == "list":
@@ -378,6 +418,8 @@ def main():
         cmd_areas(args)
     elif args.command == "scripts":
         cmd_scripts(args)
+    elif args.command == "automations":
+        cmd_automations(args)
 
 
 if __name__ == "__main__":
