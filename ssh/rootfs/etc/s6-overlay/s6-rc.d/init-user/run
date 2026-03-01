@@ -15,7 +15,9 @@ readonly VSCODE_SERVER_PERSISTENT_PATH=/data/.vscode-server
 readonly ZSH_HISTORY_FILE=/root/.zsh_history
 readonly ZSH_HISTORY_PERSISTENT_FILE=/data/.zsh_history
 readonly CLAUDE_PATH=/root/.claude
+readonly CLAUDE_JSON=/root/.claude.json
 readonly CLAUDE_PERSISTENT_PATH=/share/.claude
+readonly CLAUDE_PERSISTENT_JSON=/share/.claude.json
 readonly CLAUDE_DEFAULT_SETTINGS=/etc/claude/settings.json
 
 # Links some common directories to the user's home folder for convenience
@@ -91,21 +93,6 @@ if ! bashio::fs.directory_exists "${VSCODE_SERVER_PERSISTENT_PATH}"; then
 fi
 ln -s "${VSCODE_SERVER_PERSISTENT_PATH}" "${VSCODE_SERVER_PATH}"
 
-# Migrate Claude config from /data/.claude to /share/.claude
-if [ -L "/data/.claude" ]; then
-    # Symlink from a previous run after migration — just remove it
-    rm -f "/data/.claude"
-elif bashio::fs.directory_exists "/data/.claude"; then
-    if ! bashio::fs.directory_exists "${CLAUDE_PERSISTENT_PATH}"; then
-        bashio::log.info "Migrating Claude config from /data/.claude to ${CLAUDE_PERSISTENT_PATH}..."
-        mv "/data/.claude" "${CLAUDE_PERSISTENT_PATH}" \
-            || bashio::log.warning 'Failed to migrate Claude config; will create fresh'
-    else
-        bashio::log.notice "Both /data/.claude and ${CLAUDE_PERSISTENT_PATH} exist; keeping ${CLAUDE_PERSISTENT_PATH}"
-        rm -rf "/data/.claude"
-    fi
-fi
-
 # Sets up the Claude Code folder to be persistent
 if ! bashio::fs.directory_exists "${CLAUDE_PERSISTENT_PATH}"; then
     mkdir -p "${CLAUDE_PERSISTENT_PATH}" \
@@ -122,6 +109,12 @@ if ! bashio::fs.directory_exists "${CLAUDE_PERSISTENT_PATH}"; then
     fi
 fi
 ln -s "${CLAUDE_PERSISTENT_PATH}" "${CLAUDE_PATH}"
+
+# Persist .claude.json (stores onboarding state, theme, etc.)
+if ! bashio::fs.file_exists "${CLAUDE_PERSISTENT_JSON}"; then
+    touch "${CLAUDE_PERSISTENT_JSON}"
+fi
+ln -s "${CLAUDE_PERSISTENT_JSON}" "${CLAUDE_JSON}"
 
 # Copy/update Claude Code skills on every start
 if bashio::fs.directory_exists "/etc/claude/skills"; then
