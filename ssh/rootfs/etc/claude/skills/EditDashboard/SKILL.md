@@ -27,7 +27,7 @@ A long-lived HA access token is required:
 ```bash
 ha-dashboard list                                    # List all dashboards
 ha-dashboard get <url_path>                          # Print config JSON to stdout
-ha-dashboard set <url_path>                          # Read JSON from stdin and save
+ha-dashboard set <url_path> [file]                   # Read JSON from file (or stdin) and save
 ha-dashboard create <url_path> <title> [options]     # Create a new empty dashboard
 ha-dashboard delete <url_path>                       # Delete a dashboard (permanent)
 ha-dashboard update <url_path> [options]             # Update metadata only
@@ -50,7 +50,7 @@ Always LIST first to find the correct `url_path`, then GET, modify, and SET back
 ha-dashboard list                                      # find the correct url_path
 ha-dashboard get dashboard-name > /tmp/dashboard.json
 # edit /tmp/dashboard.json with Edit tool
-ha-dashboard set dashboard-name < /tmp/dashboard.json   # JSON is validated before push
+ha-dashboard set dashboard-name /tmp/dashboard.json    # JSON is validated before push
 ```
 
 ## Workflow: Create a New Dashboard
@@ -62,7 +62,7 @@ ha-dashboard create my-new-dash "My Dashboard" --icon mdi:home
 # 2. Build its config and push it
 ha-dashboard get dashboard-name > /tmp/new.json   # start from an existing one, or build from scratch
 # edit /tmp/new.json
-ha-dashboard set my-new-dash < /tmp/new.json
+ha-dashboard set my-new-dash /tmp/new.json
 ```
 
 ## Workflow: Delete a Dashboard
