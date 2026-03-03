@@ -15,7 +15,9 @@ readonly VSCODE_SERVER_PERSISTENT_PATH=/data/.vscode-server
 readonly ZSH_HISTORY_FILE=/root/.zsh_history
 readonly ZSH_HISTORY_PERSISTENT_FILE=/data/.zsh_history
 readonly CLAUDE_PATH=/root/.claude
-readonly CLAUDE_PERSISTENT_PATH=/data/.claude
+readonly CLAUDE_JSON=/root/.claude.json
+readonly CLAUDE_PERSISTENT_PATH=/share/.claude
+readonly CLAUDE_PERSISTENT_JSON=/share/.claude.json
 readonly CLAUDE_DEFAULT_SETTINGS=/etc/claude/settings.json
 
 # Links some common directories to the user's home folder for convenience
@@ -100,13 +102,36 @@ if ! bashio::fs.directory_exists "${CLAUDE_PERSISTENT_PATH}"; then
         || bashio::exit.nok \
             'Failed setting permissions on persistent .claude folder'
 
-    # Copy default settings if they exist
+    # Copy default settings on first run
     if bashio::fs.file_exists "${CLAUDE_DEFAULT_SETTINGS}"; then
         cp "${CLAUDE_DEFAULT_SETTINGS}" "${CLAUDE_PERSISTENT_PATH}/settings.json" \
             || bashio::log.warning 'Failed to copy default Claude settings'
     fi
 fi
+
+# Merge new default permissions into existing settings on every start
+if bashio::fs.file_exists "${CLAUDE_DEFAULT_SETTINGS}" \
+    && bashio::fs.file_exists "${CLAUDE_PERSISTENT_PATH}/settings.json"; then
+    merged=$(jq -s '
+        .[0] as $current | .[1] as $defaults |
+        $current * {
+            permissions: {
+                allow: (($current.permissions.allow // []) + ($defaults.permissions.allow // []) | unique),
+                deny: (($current.permissions.deny // []) + ($defaults.permissions.deny // []) | unique)
+            }
+        }
+    ' "${CLAUDE_PERSISTENT_PATH}/settings.json" "${CLAUDE_DEFAULT_SETTINGS}" 2>/dev/null) \
+        && echo "${merged}" > "${CLAUDE_PERSISTENT_PATH}/settings.json" \
+        || bashio::log.warning 'Failed to merge default Claude settings'
+fi
+
 ln -s "${CLAUDE_PERSISTENT_PATH}" "${CLAUDE_PATH}"
+
+# Persist .claude.json (stores onboarding state, theme, etc.)
+if ! bashio::fs.file_exists "${CLAUDE_PERSISTENT_JSON}"; then
+    echo '{}' > "${CLAUDE_PERSISTENT_JSON}"
+fi
+ln -s "${CLAUDE_PERSISTENT_JSON}" "${CLAUDE_JSON}"
 
 # Copy/update Claude Code skills on every start
 if bashio::fs.directory_exists "/etc/claude/skills"; then
