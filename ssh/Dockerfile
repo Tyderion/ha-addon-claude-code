@@ -35,7 +35,7 @@ RUN \
         alsa-utils=1.2.14-r4 \
         awake=1.0-r12 \
         bash-completion=2.17.0-r1 \
-        bind-tools=9.20.19-r0 \
+        bind-tools=9.20.20-r0 \
         bluez=5.85-r0 \
         colordiff=1.0.21-r0 \
         docker-bash-completion=29.1.3-r2 \
@@ -70,7 +70,7 @@ RUN \
         sudo=1.9.17_p2-r0 \
         tmux=3.6-r0 \
         ttyd=1.7.7-r0 \
-        vim=9.1.2132-r0 \
+        vim=9.2.0078-r0 \
         wget=1.25.0-r2 \
         zip=3.0-r13 \
         zsh-autosuggestions=0.7.1-r0 \
