@@ -6,6 +6,9 @@ ha_call() and reused for all subsequent calls within the same process.
 Public API:
     get_token() -> str
     ha_call(command: dict) -> dict
+    ha_result(command: dict) -> the command's unwrapped "result"
+
+Both call helpers raise RuntimeError when HA reports failure.
 """
 
 import atexit
@@ -15,6 +18,7 @@ import os
 import socket
 import struct
 import sys
+import time
 
 HA_HOST = "localhost"
 HA_PORT = 8123
@@ -89,8 +93,11 @@ class WS:
         data, self._buf = self._buf[:n], self._buf[n:]
         return data
 
-    def recv(self) -> dict:
+    def _read_frame(self):
+        """Read one WebSocket frame; return (fin, opcode, payload)."""
         header = self._read(2)
+        fin = (header[0] & 0x80) != 0
+        opcode = header[0] & 0x0F
         masked = (header[1] & 0x80) != 0
         length = header[1] & 0x7F
 
@@ -105,25 +112,47 @@ class WS:
         if masked:
             payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
 
-        return json.loads(payload.decode())
+        return fin, opcode, payload
 
-    def send(self, data: dict):
-        payload = json.dumps(data).encode()
+    def recv(self) -> dict:
+        """Receive one JSON message, handling control frames and fragmentation."""
+        message = b""
+        while True:
+            fin, opcode, payload = self._read_frame()
+            if opcode == 0x9:  # ping → reply with pong
+                self._send_frame(0xA, payload)
+            elif opcode == 0xA:  # pong → ignore
+                pass
+            elif opcode == 0x8:  # close
+                raise RuntimeError("Server closed the WebSocket connection")
+            elif opcode in (0x1, 0x0):  # text / continuation
+                message += payload
+                if fin:
+                    return json.loads(message.decode())
+            else:
+                raise RuntimeError(f"Unsupported WebSocket frame (opcode {opcode:#x})")
+
+    def _send_frame(self, opcode: int, payload: bytes):
         length = len(payload)
         mask_key = os.urandom(4)
         masked = bytes(b ^ mask_key[i % 4] for i, b in enumerate(payload))
+        first = 0x80 | opcode
 
         if length < 126:
-            header = bytes([0x81, 0x80 | length]) + mask_key
+            header = bytes([first, 0x80 | length]) + mask_key
         elif length < 65536:
-            header = bytes([0x81, 0xFE]) + struct.pack(">H", length) + mask_key
+            header = bytes([first, 0xFE]) + struct.pack(">H", length) + mask_key
         else:
-            header = bytes([0x81, 0xFF]) + struct.pack(">Q", length) + mask_key
+            header = bytes([first, 0xFF]) + struct.pack(">Q", length) + mask_key
 
         self._sock.sendall(header + masked)
 
+    def send(self, data: dict):
+        self._send_frame(0x1, json.dumps(data).encode())
+
     def close(self):
         try:
+            self._send_frame(0x8, struct.pack(">H", 1000))  # clean close, code 1000
             self._sock.close()
         except Exception:
             pass
@@ -135,20 +164,25 @@ def _ensure_connection():
     if _ws is not None:
         return
 
-    _ws = WS()
+    ws = WS()
+    try:
+        msg = ws.recv()
+        if msg.get("type") != "auth_required":
+            raise RuntimeError(f"Expected auth_required, got: {msg}")
 
-    msg = _ws.recv()
-    if msg.get("type") != "auth_required":
-        raise RuntimeError(f"Expected auth_required, got: {msg}")
+        ws.send({"type": "auth", "access_token": get_token()})
+        msg = ws.recv()
+        if msg.get("type") != "auth_ok":
+            raise RuntimeError(
+                "Authentication failed. Check your token in "
+                f"HA_TOKEN env var or {TOKEN_FILE}"
+            )
+    except BaseException:
+        # Never leave a broken, unauthenticated socket as the singleton
+        ws.close()
+        raise
 
-    _ws.send({"type": "auth", "access_token": get_token()})
-    msg = _ws.recv()
-    if msg.get("type") != "auth_ok":
-        raise RuntimeError(
-            "Authentication failed. Check your token in "
-            f"HA_TOKEN env var or {TOKEN_FILE}"
-        )
-
+    _ws = ws
     atexit.register(_cleanup)
 
 
@@ -159,23 +193,49 @@ def _cleanup():
         _ws = None
 
 
-def ha_call(command: dict) -> dict:
+def ha_call(command: dict, timeout: float = 60.0) -> dict:
     """Send a command over the singleton WebSocket and return the response.
 
     The connection is opened and authenticated lazily on the first call.
     Subsequent calls reuse the same connection. Unsolicited messages
     (events, etc.) with non-matching IDs are discarded.
+
+    Raises RuntimeError if HA reports the command failed (success: false)
+    or no response arrives within `timeout` seconds.
     """
     global _msg_id
 
     _ensure_connection()
 
     _msg_id += 1
-    command["id"] = _msg_id
-    _ws.send(command)
+    _ws.send({**command, "id": _msg_id})
 
     # Read until we get the response matching our ID
+    deadline = time.monotonic() + timeout
     while True:
-        msg = _ws.recv()
-        if msg.get("id") == _msg_id:
-            return msg
+        if time.monotonic() > deadline:
+            raise RuntimeError(
+                f"Timed out waiting for response to '{command.get('type')}'"
+            )
+        try:
+            msg = _ws.recv()
+        except socket.timeout:
+            raise RuntimeError(
+                f"Timed out waiting for response to '{command.get('type')}'"
+            ) from None
+        if msg.get("id") != _msg_id:
+            continue
+        if msg.get("success") is False:
+            error = msg.get("error", {})
+            if isinstance(error, dict):
+                code = f" ({error['code']})" if error.get("code") else ""
+                detail = f"{error.get('message', 'unknown error')}{code}"
+            else:
+                detail = str(error)
+            raise RuntimeError(f"'{command.get('type')}' failed: {detail}")
+        return msg
+
+
+def ha_result(command: dict):
+    """Run a command and return its unwrapped "result" payload."""
+    return ha_call(command).get("result")

@@ -21,7 +21,7 @@ import sys
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from ha_lib import ha_call
+from ha_lib import ha_result
 
 
 def print_output(data, fmt):
@@ -65,23 +65,12 @@ KEY_ATTR_MAP = {
 FALLBACK_ATTRS = ("device_class", "unit_of_measurement", "state_class")
 
 
-def ha_result(command: dict):
-    """Run a WS command and return its result, exiting loudly on failure."""
-    resp = ha_call(command)
-    if not resp.get("success"):
-        error = resp.get("error", resp)
-        msg = error.get("message", error) if isinstance(error, dict) else error
-        print(f"Error: '{command['type']}' failed: {msg}", file=sys.stderr)
-        sys.exit(1)
-    return resp.get("result", [])
-
-
 def fetch_all_data():
     """Fetch states + 3 registries over the singleton connection."""
-    states = ha_result({"type": "get_states"})
-    entity_reg = ha_result({"type": "config/entity_registry/list"})
-    device_reg = ha_result({"type": "config/device_registry/list"})
-    area_reg = ha_result({"type": "config/area_registry/list"})
+    states = ha_result({"type": "get_states"}) or []
+    entity_reg = ha_result({"type": "config/entity_registry/list"}) or []
+    device_reg = ha_result({"type": "config/device_registry/list"}) or []
+    area_reg = ha_result({"type": "config/area_registry/list"}) or []
 
     return states, entity_reg, device_reg, area_reg
 
@@ -275,7 +264,7 @@ def cmd_get(args):
 
 
 def cmd_domains(args):
-    states = ha_result({"type": "get_states"})
+    states = ha_result({"type": "get_states"}) or []
 
     domain_counts = {}
     for s in states:
@@ -316,7 +305,7 @@ def cmd_areas(args):
 
 
 def cmd_scripts(args):
-    states = ha_result({"type": "get_states"})
+    states = ha_result({"type": "get_states"}) or []
 
     # Filter to script entities only
     scripts = [s for s in states if s["entity_id"].startswith("script.")]
@@ -349,7 +338,7 @@ def cmd_scripts(args):
 
 
 def cmd_automations(args):
-    states = ha_result({"type": "get_states"})
+    states = ha_result({"type": "get_states"}) or []
 
     # Filter to automation entities only
     automations = [s for s in states if s["entity_id"].startswith("automation.")]
