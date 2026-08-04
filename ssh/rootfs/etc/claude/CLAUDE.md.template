@@ -42,6 +42,13 @@ ha core logs
 yamllint configuration.yaml
 ```
 
+### Find Entity IDs
+```bash
+ha-entities list --search "office light"
+```
+Query entities, areas, domains, scripts, and automations with `ha-entities`
+(see the HAEntities skill). Never guess entity IDs or read `.storage/` for them.
+
 ### Edit Dashboards
 ```bash
 ha-dashboard list
