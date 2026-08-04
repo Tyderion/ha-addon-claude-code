@@ -2,12 +2,31 @@
 # Reload Home Assistant YAML configuration (hot reload, no restart)
 # Equivalent to Developer Tools → YAML → Quick Reload
 #
-# This reloads: automations, scripts, scenes, groups, input helpers,
-# templates, timers, zones, persons, schedules, themes, core config
+# Reloads all hot-reloadable YAML domains at once (all-or-nothing); see the
+# HomeAssistantReload skill for the full domain list.
 #
 # Use 'ha core restart' only for: new integrations, logger, recorder, http changes
 
 set -euo pipefail
+
+usage() {
+    echo "Usage: ha-reload"
+    echo "Reloads all hot-reloadable YAML domains at once (takes no arguments)."
+}
+
+if [ "$#" -gt 0 ]; then
+    case "$1" in
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Error: ha-reload takes no arguments" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+fi
 
 if [ -z "${SUPERVISOR_TOKEN:-}" ]; then
     echo "Error: SUPERVISOR_TOKEN not set" >&2
@@ -17,18 +36,23 @@ fi
 echo "Reloading Home Assistant configuration..."
 
 response=$(curl -s -w "\n%{http_code}" -X POST \
+    --connect-timeout 5 --max-time 120 \
     -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
     -H "Content-Type: application/json" \
-    http://supervisor/core/api/services/homeassistant/reload_all)
+    -d '{}' \
+    http://supervisor/core/api/services/homeassistant/reload_all) \
+    || {
+        echo "Error: cannot reach the Supervisor API (curl exit $?)" >&2
+        exit 1
+    }
 
 http_code=$(echo "$response" | tail -n1)
-body=$(echo "$response" | sed '$d')
 
-if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-    echo "Configuration reloaded successfully"
-    echo "Reloaded: automations, scripts, scenes, groups, inputs, templates, zones, themes"
+if [ "$http_code" -ge 200 ] 2> /dev/null && [ "$http_code" -lt 300 ]; then
+    echo "Reloaded all hot-reloadable YAML domains"
+    echo "Note: per-domain errors appear only in 'ha core logs'"
 else
     echo "Failed to reload configuration (HTTP $http_code)" >&2
-    echo "$body" >&2
+    echo "$response" | sed '$d' >&2
     exit 1
 fi

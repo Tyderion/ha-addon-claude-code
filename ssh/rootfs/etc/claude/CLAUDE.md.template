@@ -18,8 +18,9 @@ This is a Home Assistant configuration directory.
 ```bash
 ha-reload
 ```
-Use this for YAML changes. It's instant, has no downtime, and validates first.
-Reloads: automations, scripts, scenes, groups, inputs, templates, zones, themes.
+Use this for YAML changes. It's instant and has no downtime. Validate first
+with `yamllint` (and `ha core check` for configuration.yaml changes).
+Reloads all hot-reloadable YAML domains (see the HomeAssistantReload skill).
 
 ### Full Restart (only when needed)
 ```bash

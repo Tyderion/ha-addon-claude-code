@@ -292,7 +292,7 @@ Claude Code comes with default permissions optimized for Home Assistant:
 - **Read**: `/addons/**`, `/backup/**`, `/media/**`, `/ssl/**`
 - **Bash**: `ha *` (HA CLI), `ha-reload`, `yamllint *`, `cat *`, `ls *`, `sqlite3 *`, `python3 *`, `bluetoothctl *`, `curl http://supervisor/*`
 
-These permissions are stored in `/data/.claude/settings.json` and persist across
+These permissions are stored in `/share/.claude/settings.json` and persist across
 restarts. You can customize them by editing this file or using Claude's
 `/permissions` command.
 
@@ -325,7 +325,7 @@ and customize.
 ### Session Persistence
 
 Claude Code settings, history, and authentication persist across app restarts.
-All data is stored in `/data/.claude/`.
+All data is stored in `/share/.claude/`.
 
 ### YAML Validation
 
@@ -349,18 +349,18 @@ ha-reload
 
 This is equivalent to Developer Tools → YAML → Quick Reload in the UI. It:
 
-- Validates configuration first (aborts if invalid)
-- Reloads: automations, scripts, scenes, groups, input helpers, templates,
-  timers, zones, persons, schedules, themes, core config
+- Reloads all hot-reloadable YAML domains at once (see the
+  `HomeAssistantReload` skill for the full list)
 - Has no downtime (instant reload)
 
-Use `ha core restart` only when adding new integrations or changing
-logger/recorder/http settings.
+Validate your changes first with `yamllint` (and `ha core check` for
+`configuration.yaml` changes). Use `ha core restart` only when adding new
+integrations or changing logger/recorder/http settings.
 
 ### Built-in Skills
 
 Claude Code comes with the `HomeAssistantReload` skill pre-installed. You can
-invoke it with `/homeassistant-reload` or Claude will automatically use it when
+invoke it with `/HomeAssistantReload` or Claude will automatically use it when
 you ask to apply configuration changes.
 
 The skill intelligently chooses between `ha-reload` (for YAML changes) and
