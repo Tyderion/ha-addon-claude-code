@@ -22,7 +22,6 @@
       "Bash(ls *)",
       "Bash(sqlite3 *)",
       "Bash(python3 *)",
-      "Bash(curl -s -X POST http://supervisor/*)",
       "Bash(curl -s -X GET http://supervisor/*)",
       "Bash(curl -s http://supervisor/*)",
       "Bash(ha-reload)",
@@ -32,6 +31,21 @@
       "Edit(//tmp/*.json)",
       "Write(//tmp/*.json)",
       "Bash(bluetoothctl *)"
+    ],
+    "ask": [
+      "Bash(ha core restart*)",
+      "Bash(ha core stop*)",
+      "Bash(ha core update*)",
+      "Bash(ha host reboot*)",
+      "Bash(ha host shutdown*)",
+      "Bash(ha backup restore*)",
+      "Bash(ha backups restore*)",
+      "Bash(ha addons uninstall*)",
+      "Bash(ha addons stop*)",
+      "Bash(ha os update*)",
+      "Bash(ha supervisor update*)",
+      "Bash(curl -s -X POST http://supervisor/*)",
+      "Bash(curl -X POST http://supervisor/*)"
     ],
     "deny": []
   }

@@ -117,6 +117,7 @@ if bashio::fs.file_exists "${CLAUDE_DEFAULT_SETTINGS}" \
         $current * {
             permissions: {
                 allow: (($current.permissions.allow // []) + ($defaults.permissions.allow // []) | unique),
+                ask: (($current.permissions.ask // []) + ($defaults.permissions.ask // []) | unique),
                 deny: (($current.permissions.deny // []) + ($defaults.permissions.deny // []) | unique)
             }
         }

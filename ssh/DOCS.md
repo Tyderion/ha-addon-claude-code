@@ -290,11 +290,17 @@ Claude Code comes with default permissions optimized for Home Assistant:
 - **Read/Edit**: `/homeassistant/**` (your HA config)
 - **Read/Edit**: `/addon_configs/**`, `/share/**`
 - **Read**: `/addons/**`, `/backup/**`, `/media/**`, `/ssl/**`
-- **Bash**: `ha *` (HA CLI), `ha-reload`, `yamllint *`, `cat *`, `ls *`, `sqlite3 *`, `python3 *`, `bluetoothctl *`, `curl http://supervisor/*`
+- **Bash**: `ha *` (HA CLI), `ha-reload`, `yamllint *`, `cat *`, `ls *`, `sqlite3 *`, `python3 *`, `bluetoothctl *`, `curl` GETs to `http://supervisor/*`
+
+Destructive operations always ask for confirmation first, even though `ha *`
+is allowed: `ha core restart/stop/update`, `ha host reboot/shutdown`,
+`ha backup restore`, `ha addons uninstall/stop`, `ha os update`,
+`ha supervisor update`, and `curl` POSTs to the Supervisor API (which can
+call any HA service, restart core, or restore backups).
 
 These permissions are stored in `/share/.claude/settings.json` and persist across
-restarts. You can customize them by editing this file or using Claude's
-`/permissions` command.
+restarts. New defaults are merged in additively on every start. You can customize
+them by editing this file or using Claude's `/permissions` command.
 
 ### Custom Project Instructions
 
