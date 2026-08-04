@@ -42,6 +42,13 @@ ha core logs
 yamllint configuration.yaml
 ```
 
+### Edit Dashboards
+```bash
+ha-dashboard list
+```
+Manage Lovelace dashboards with `ha-dashboard` (see the EditDashboard skill).
+Never edit `.storage/lovelace.*` files directly — they go stale.
+
 ## Best Practices
 
 - Always validate configuration before restarting

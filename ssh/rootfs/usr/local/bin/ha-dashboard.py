@@ -4,7 +4,7 @@
 Usage:
   ha-dashboard list                                    List all dashboards
   ha-dashboard get <url_path>                          Print config JSON to stdout
-  ha-dashboard set <url_path>                          Read JSON from stdin and save
+  ha-dashboard set <url_path> <file>                   Save dashboard config from JSON file
   ha-dashboard create <url_path> <title> [options]     Create a new dashboard
   ha-dashboard delete <url_path>                       Delete a dashboard
   ha-dashboard update <url_path> [options]             Update dashboard metadata
@@ -168,12 +168,27 @@ def ha_call(command: dict) -> dict:
 
 
 def _dashboard_id(url_path: str) -> str:
-    """Derive the dashboard_id used by update/delete from its url_path."""
-    return url_path.replace("-", "_")
+    """Look up the dashboard_id used by update/delete from its url_path."""
+    result = ha_call({"type": "lovelace/dashboards/list"})
+    if not result.get("success"):
+        _fail(result)
+    for d in result.get("result", []):
+        if d.get("url_path") == url_path:
+            return d["id"]
+    print(
+        f"Error: no dashboard with url_path '{url_path}' — run `ha-dashboard list`",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def _fail(result: dict):
-    print(f"Error: {result.get('error', result)}", file=sys.stderr)
+    error = result.get("error", result)
+    if isinstance(error, dict) and "message" in error:
+        code = f" ({error['code']})" if error.get("code") else ""
+        print(f"Error: {error['message']}{code}", file=sys.stderr)
+    else:
+        print(f"Error: {error}", file=sys.stderr)
     sys.exit(1)
 
 
@@ -185,9 +200,7 @@ def cmd_list():
     if not result.get("success"):
         _fail(result)
     dashboards = result.get("result", [])
-    if not dashboards:
-        print("(no custom dashboards — only the default dashboard exists)")
-        return
+    print(f"{'default':30s}  (main dashboard)")
     for d in dashboards:
         sidebar = "" if d.get("show_in_sidebar") else "  [hidden]"
         admin = "  [admin]" if d.get("require_admin") else ""
@@ -205,17 +218,31 @@ def cmd_get(url_path: str):
 
 
 def _validate_json(raw: str) -> dict:
-    """Parse and validate JSON (same behaviour as `python3 -m json.tool`)."""
+    """Parse JSON and check it has the shape of a Lovelace config."""
     try:
         obj = json.loads(raw)
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON: {e}", file=sys.stderr)
         sys.exit(1)
+    if not isinstance(obj, dict) or not (
+        isinstance(obj.get("views"), list) or isinstance(obj.get("strategy"), dict)
+    ):
+        print(
+            "Error: dashboard config must be a JSON object with a 'views' list "
+            "(or a 'strategy' object)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     return obj
 
 
-def cmd_set(url_path: str):
-    raw = sys.stdin.read()
+def cmd_set(url_path: str, file: str):
+    try:
+        with open(file) as f:
+            raw = f.read()
+    except OSError as e:
+        print(f"Error: cannot read {file}: {e}", file=sys.stderr)
+        sys.exit(1)
     config = _validate_json(raw)
     cmd = {"type": "lovelace/config/save", "config": config}
     if url_path != "default":
@@ -258,6 +285,13 @@ def cmd_delete(url_path: str):
 
 
 def cmd_update(url_path: str, title, icon, show_in_sidebar, require_admin):
+    if all(v is None for v in (title, icon, show_in_sidebar, require_admin)):
+        print(
+            "Error: no metadata flags given "
+            "(use --title/--icon/--show/--hidden/--admin/--no-admin)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     cmd = {
         "type": "lovelace/dashboards/update",
         "dashboard_id": _dashboard_id(url_path),
@@ -285,7 +319,6 @@ def main():
         prog="ha-dashboard",
         description="Manage Home Assistant Lovelace dashboards via WebSocket API.",
     )
-    parser.add_argument("-H", "--host", default=HA_HOST, help=argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="command", metavar="command")
     sub.required = True
 
@@ -294,8 +327,9 @@ def main():
     p_get = sub.add_parser("get", help="Print dashboard config JSON to stdout")
     p_get.add_argument("url_path")
 
-    p_set = sub.add_parser("set", help="Read JSON from stdin and save to dashboard")
+    p_set = sub.add_parser("set", help="Save dashboard config from a JSON file")
     p_set.add_argument("url_path")
+    p_set.add_argument("file", help="JSON file to read")
 
     p_create = sub.add_parser("create", help="Create a new empty dashboard")
     p_create.add_argument("url_path", help="URL slug, e.g. my-dashboard")
@@ -365,30 +399,34 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "list":
-        cmd_list()
-    elif args.command == "get":
-        cmd_get(args.url_path)
-    elif args.command == "set":
-        cmd_set(args.url_path)
-    elif args.command == "create":
-        cmd_create(
-            args.url_path,
-            args.title,
-            args.icon,
-            args.show_in_sidebar,
-            args.require_admin,
-        )
-    elif args.command == "delete":
-        cmd_delete(args.url_path)
-    elif args.command == "update":
-        cmd_update(
-            args.url_path,
-            args.title,
-            args.icon,
-            args.show_in_sidebar,
-            args.require_admin,
-        )
+    try:
+        if args.command == "list":
+            cmd_list()
+        elif args.command == "get":
+            cmd_get(args.url_path)
+        elif args.command == "set":
+            cmd_set(args.url_path, args.file)
+        elif args.command == "create":
+            cmd_create(
+                args.url_path,
+                args.title,
+                args.icon,
+                args.show_in_sidebar,
+                args.require_admin,
+            )
+        elif args.command == "delete":
+            cmd_delete(args.url_path)
+        elif args.command == "update":
+            cmd_update(
+                args.url_path,
+                args.title,
+                args.icon,
+                args.show_in_sidebar,
+                args.require_admin,
+            )
+    except (RuntimeError, OSError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

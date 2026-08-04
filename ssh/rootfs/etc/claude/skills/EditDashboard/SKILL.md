@@ -1,37 +1,32 @@
 ---
 name: EditDashboard
 description:
-  Manage Home Assistant Lovelace dashboards via the WebSocket API — get,
-  set, create, delete, and update. USE for any dashboard operation. NEVER edit
+  Manage Home Assistant Lovelace dashboards, views, cards, tiles, badges, and
+  sidebar entries via the WebSocket API — get, set, create, delete, and update.
+  USE for any dashboard, Lovelace, view, or card operation. NEVER edit
   .storage/lovelace.* files directly — they will go stale.
 ---
 
 # EditDashboard
 
-Use `ha-dashboard` to manage Lovelace dashboards through the HA WebSocket API — the same path the frontend uses. This avoids stale-data overwrites.
+Use `ha-dashboard` to manage Lovelace dashboards through the HA WebSocket API — the same path the frontend uses. This avoids stale file reads; note that a concurrent edit made in the HA UI between `get` and `set` will still be overwritten.
 
-## One-Time Setup
+## Setup
 
-A long-lived HA access token is required:
-
-1. HA UI → Profile (bottom-left) → **Security** tab → **Long-Lived Access Tokens** → Create Token
-2. Name it "Claude Dashboard API"
-3. Copy the token and save it:
-   ```bash
-   echo "your_token_here" > /homeassistant/.claude/ha_token
-   chmod 600 /homeassistant/.claude/ha_token
-   ```
+A long-lived HA access token is required (one-time). If it's missing, `ha-dashboard` exits with the exact setup instructions — just follow them (HA UI → Profile → Security → Long-Lived Access Tokens, save to `/homeassistant/.claude/ha_token`).
 
 ## Commands
 
 ```bash
 ha-dashboard list                                    # List all dashboards
 ha-dashboard get <url_path>                          # Print config JSON to stdout
-ha-dashboard set <url_path> [file]                   # Read JSON from file (or stdin) and save
+ha-dashboard set <url_path> <file>                   # Save dashboard config from JSON file
 ha-dashboard create <url_path> <title> [options]     # Create a new empty dashboard
 ha-dashboard delete <url_path>                       # Delete a dashboard (permanent)
 ha-dashboard update <url_path> [options]             # Update metadata only
 ```
+
+The special `url_path` **`default`** addresses the main dashboard (the first row in `list` output).
 
 ### create / update options
 
@@ -47,10 +42,11 @@ ha-dashboard update <url_path> [options]             # Update metadata only
 Always LIST first to find the correct `url_path`, then GET, modify, and SET back:
 
 ```bash
-ha-dashboard list                                      # find the correct url_path
-ha-dashboard get dashboard-name > /tmp/dashboard.json
+ha-dashboard list                                             # find the correct url_path
+ha-dashboard get dashboard-name > /tmp/dashboard.backup.json  # backup — only recovery path
+cp /tmp/dashboard.backup.json /tmp/dashboard.json
 # edit /tmp/dashboard.json with Edit tool
-ha-dashboard set dashboard-name /tmp/dashboard.json    # JSON is validated before push
+ha-dashboard set dashboard-name /tmp/dashboard.json           # JSON is validated before push
 ```
 
 ## Workflow: Create a New Dashboard
@@ -68,10 +64,11 @@ ha-dashboard set my-new-dash /tmp/new.json
 ## Workflow: Delete a Dashboard
 
 ```bash
+ha-dashboard get my-new-dash > /tmp/my-new-dash.backup.json   # backup first
 ha-dashboard delete my-new-dash
 ```
 
-Deletion is **permanent** — the dashboard registration and all its card config are removed.
+Deletion is **permanent** — the dashboard registration and all its card config are removed. The backup is the only recovery path.
 
 ## Workflow: Rename / Update Metadata
 
@@ -81,9 +78,16 @@ ha-dashboard update my-dash --hidden          # remove from sidebar
 ha-dashboard update my-dash --show --admin    # restore + require admin
 ```
 
+## Gotchas
+
+- `get` on a freshly created dashboard (or an auto-generated one with no stored config) returns `config_not_found` — that is expected. Skip `get` and `set` a config with a `views` array directly.
+- Dashboards using `{"strategy": {...}}` (including HA's default "Overview") are auto-generated. `set` with a static `views` config **permanently** converts them to static and discards auto-population — confirm with the user first.
+
 ## Rules
 
+- **Always back up before `set` or `delete`**: `ha-dashboard get <url_path> > /tmp/<url_path>.backup.json` — it is the only recovery path
 - **Always save dashboard JSON to `/tmp/`** — use `/tmp/<url_path>.json` as the working file (e.g. `/tmp/dashboard-name.json`). You have read/edit/write permissions for `/tmp/*.json`.
+- **Always pass config as a file path** — `ha-dashboard set <url_path> <file>`. Never pipe via stdin (`cat file | ha-dashboard set …` or `ha-dashboard set … < file`) — stdin is not supported.
 - **Always LIST first** before any get/set/delete/update — never assume the exact `url_path`, the user may use a short or approximate name
 - **Always GET first** before editing config — never use stale file reads
 - **Never write `.storage/lovelace.*` files directly** — HA's in-memory state won't update
