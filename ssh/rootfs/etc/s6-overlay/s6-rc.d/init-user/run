@@ -126,6 +126,9 @@ if bashio::fs.file_exists "${CLAUDE_DEFAULT_SETTINGS}" \
         || bashio::log.warning 'Failed to merge default Claude settings'
 fi
 
+# The Claude installer leaves runtime state in the image; remove it so the
+# persistence symlinks can be created (rm on a symlink removes only the link)
+rm -rf "${CLAUDE_PATH}" "${CLAUDE_JSON}"
 ln -s "${CLAUDE_PERSISTENT_PATH}" "${CLAUDE_PATH}"
 
 # Persist .claude.json (stores onboarding state, theme, etc.)

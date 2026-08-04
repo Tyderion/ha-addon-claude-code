@@ -97,6 +97,8 @@ RUN \
     \
     && curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_VERSION}" \
     && ln -sf /root/.local/bin/claude /usr/local/bin/claude \
+    # Drop installer runtime state; init-user symlinks these to /share
+    && rm -rf /root/.claude /root/.claude.json \
     \
     && apk del --no-cache --purge .build-dependencies \
     \
