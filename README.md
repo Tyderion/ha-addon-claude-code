@@ -89,7 +89,7 @@ To install it, you need to add this repository as a custom repository:
 4. Select **Repositories**
 5. Add the following URL:
    ```
-   https://github.com/jantimon/ha-addon-ssh
+   https://github.com/Tyderion/ha-addon-claude-code
    ```
 6. Click **Add** and then **Close**
 7. Refresh the page and find "SSH & Claude Code Terminal" in the app store
