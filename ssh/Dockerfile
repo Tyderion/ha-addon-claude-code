@@ -14,6 +14,7 @@ COPY requirements.txt /tmp/
 # Setup base
 ARG BUILD_ARCH=amd64
 ARG HA_CLI_VERSION="4.46.0"
+ARG CLAUDE_VERSION="2.1.221"
 
 # hadolint ignore=DL3003,DL3042
 RUN \
@@ -44,6 +45,7 @@ RUN \
         git \
         htop \
         json-c \
+        libgcc \
         libltdl \
         libstdc++ \
         libuv \
@@ -65,6 +67,7 @@ RUN \
         pulseaudio-utils \
         py3-pip \
         python3 \
+        ripgrep \
         rsync \
         sqlite \
         sudo \
@@ -92,8 +95,8 @@ RUN \
     \
     && pip3 install -r /tmp/requirements.txt \
     \
-    && npm install -g @anthropic-ai/claude-code@2.1.74 \
-    && npm cache clean --force \
+    && curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_VERSION}" \
+    && ln -sf /root/.local/bin/claude /usr/local/bin/claude \
     \
     && apk del --no-cache --purge .build-dependencies \
     \
