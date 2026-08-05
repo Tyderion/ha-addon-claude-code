@@ -79,6 +79,14 @@ Render Jinja templates against live state before putting them into
 automations, dashboards, or template sensors (see the TestTemplate skill).
 Never write a template into config unverified.
 
+### Call Services
+```bash
+ha-service show light.turn_on
+ha-service call light.turn_on --entity light.office --data brightness=200
+```
+Discover real service parameters and call services (see the CallService
+skill). Never guess service fields — `ha-service show` has the actual spec.
+
 ## Best Practices
 
 - Always validate configuration before restarting

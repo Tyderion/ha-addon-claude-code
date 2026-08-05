@@ -30,11 +30,13 @@
       "Bash(ha-trace *)",
       "Bash(ha-history *)",
       "Bash(ha-template *)",
+      "Bash(ha-service *)",
       "Read(//tmp/*.json)",
       "Edit(//tmp/*.json)",
       "Bash(bluetoothctl *)"
     ],
     "ask": [
+      "Bash(*--unsafe*)",
       "Bash(ha core restart*)",
       "Bash(ha core stop*)",
       "Bash(ha core update*)",
