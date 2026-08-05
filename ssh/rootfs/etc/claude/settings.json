@@ -27,6 +27,8 @@
       "Bash(ha-reload)",
       "Bash(ha-entities *)",
       "Bash(ha-dashboard *)",
+      "Bash(ha-trace *)",
+      "Bash(ha-history *)",
       "Read(//tmp/*.json)",
       "Edit(//tmp/*.json)",
       "Write(//tmp/*.json)",
