@@ -64,6 +64,13 @@ ha-trace runs automation.morning_lights
 Inspect why an automation ran, stopped, or failed using execution traces
 (see the DebugAutomation skill). Never guess from the YAML alone.
 
+### Query History
+```bash
+ha-history changes binary_sensor.front_door --last 24h
+```
+Answer "when/how long/how much" questions from recorded history and
+long-term statistics (see the QueryHistory skill).
+
 ## Best Practices
 
 - Always validate configuration before restarting
