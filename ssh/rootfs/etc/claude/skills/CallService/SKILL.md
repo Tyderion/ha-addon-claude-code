@@ -73,6 +73,9 @@ ha-service call mqtt.publish --data-file payload.yaml
 
 ## Gotchas
 
+- Nonexistent `--entity` targets are caught before the call, with
+  suggestions — HA itself would silently do nothing for a normal call on
+  an unknown entity.
 - Unknown `--data` keys warn on stderr but are still sent — HA itself
   rejects truly invalid data with its own error.
 - List values need JSON: `--data 'rgb_color=[255,0,0]'`.

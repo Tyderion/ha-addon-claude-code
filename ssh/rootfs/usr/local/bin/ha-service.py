@@ -26,6 +26,7 @@ All commands accept --format yaml|json (default: yaml).
 """
 
 import argparse
+import difflib
 import fnmatch
 import json
 import os
@@ -148,6 +149,29 @@ def build_target(args):
     return target
 
 
+def validate_entities(entity_ids):
+    """Fail early when a target entity doesn't exist.
+
+    HA silently does nothing for normal calls on unknown entities, and
+    response-returning calls fail with a cryptic "did not match any entities".
+    """
+    existing = {s["entity_id"] for s in ha_result({"type": "get_states"}) or []}
+    missing = [e for e in entity_ids if e not in existing]
+    if not missing:
+        return
+    lines = []
+    for entity in missing:
+        near = difflib.get_close_matches(entity, existing, n=3, cutoff=0.6)
+        if not near:
+            domain = entity.partition(".")[0]
+            near = sorted(e for e in existing if e.startswith(f"{domain}."))[:3]
+        hint = f" — did you mean: {', '.join(near)}?" if near else ""
+        lines.append(f"no entity '{entity}'{hint}")
+    raise RuntimeError(
+        "; ".join(lines) + " (find entities with `ha-entities list --search ...`)"
+    )
+
+
 def cmd_list(args):
     services = fetch_services()
 
@@ -247,6 +271,8 @@ def cmd_call(args):
     if data:
         command["service_data"] = data
     target = build_target(args)
+    if target.get("entity_id"):
+        validate_entities(target["entity_id"])
     if target:
         command["target"] = target
     if response_kind(spec) != "none":
