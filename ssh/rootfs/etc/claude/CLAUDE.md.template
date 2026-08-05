@@ -57,6 +57,13 @@ ha-dashboard list
 Manage Lovelace dashboards with `ha-dashboard` (see the EditDashboard skill).
 Never edit `.storage/lovelace.*` files directly — they go stale.
 
+### Debug Automations
+```bash
+ha-trace runs automation.morning_lights
+```
+Inspect why an automation ran, stopped, or failed using execution traces
+(see the DebugAutomation skill). Never guess from the YAML alone.
+
 ## Best Practices
 
 - Always validate configuration before restarting
