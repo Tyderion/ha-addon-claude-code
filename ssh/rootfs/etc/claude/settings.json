@@ -31,7 +31,6 @@
       "Bash(ha-history *)",
       "Read(//tmp/*.json)",
       "Edit(//tmp/*.json)",
-      "Write(//tmp/*.json)",
       "Bash(bluetoothctl *)"
     ],
     "ask": [
