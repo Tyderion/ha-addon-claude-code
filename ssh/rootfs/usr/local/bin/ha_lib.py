@@ -7,8 +7,9 @@ Public API:
     get_token() -> str
     ha_call(command: dict) -> dict
     ha_result(command: dict) -> the command's unwrapped "result"
+    ha_subscribe(command: dict) -> generator of event payloads
 
-Both call helpers raise RuntimeError when HA reports failure.
+All helpers raise RuntimeError when HA reports failure.
 """
 
 import atexit
@@ -239,3 +240,54 @@ def ha_call(command: dict, timeout: float = 60.0) -> dict:
 def ha_result(command: dict):
     """Run a command and return its unwrapped "result" payload."""
     return ha_call(command).get("result")
+
+
+def ha_subscribe(command: dict, timeout: float = 60.0):
+    """Send a subscription command and yield each event payload as it arrives.
+
+    Consumes the success acknowledgement first (raising RuntimeError on
+    failure), then yields the "event" payload of every matching event message.
+    `timeout` bounds the wait for the ack and the first event; after that the
+    stream is unbounded — idle socket timeouts trigger a WebSocket ping so a
+    dead connection is detected instead of blocking forever.
+
+    The subscription is never cancelled; intended for CLI processes that exit
+    (and close the connection) when done.
+    """
+    global _msg_id
+
+    _ensure_connection()
+
+    _msg_id += 1
+    sub_id = _msg_id
+    _ws.send({**command, "id": sub_id})
+
+    deadline = time.monotonic() + timeout
+    got_event = False
+    while True:
+        if not got_event and time.monotonic() > deadline:
+            raise RuntimeError(f"Timed out waiting for '{command.get('type')}'")
+        try:
+            msg = _ws.recv()
+        except socket.timeout:
+            if not got_event:
+                raise RuntimeError(
+                    f"Timed out waiting for '{command.get('type')}'"
+                ) from None
+            _ws._send_frame(0x9, b"keepalive")  # liveness probe; pong is swallowed
+            continue
+        if msg.get("id") != sub_id:
+            continue
+        if msg.get("type") == "result":
+            if msg.get("success") is False:
+                error = msg.get("error", {})
+                if isinstance(error, dict):
+                    code = f" ({error['code']})" if error.get("code") else ""
+                    detail = f"{error.get('message', 'unknown error')}{code}"
+                else:
+                    detail = str(error)
+                raise RuntimeError(f"'{command.get('type')}' failed: {detail}")
+            continue
+        if msg.get("type") == "event":
+            got_event = True
+            yield msg.get("event")

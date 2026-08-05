@@ -29,6 +29,7 @@
       "Bash(ha-dashboard *)",
       "Bash(ha-trace *)",
       "Bash(ha-history *)",
+      "Bash(ha-template *)",
       "Read(//tmp/*.json)",
       "Edit(//tmp/*.json)",
       "Bash(bluetoothctl *)"

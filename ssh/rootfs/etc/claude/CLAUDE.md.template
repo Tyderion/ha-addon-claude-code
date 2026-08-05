@@ -71,6 +71,14 @@ ha-history changes binary_sensor.front_door --last 24h
 Answer "when/how long/how much" questions from recorded history and
 long-term statistics (see the QueryHistory skill).
 
+### Test Templates
+```bash
+ha-template '{{ states("sun.sun") }}'
+```
+Render Jinja templates against live state before putting them into
+automations, dashboards, or template sensors (see the TestTemplate skill).
+Never write a template into config unverified.
+
 ## Best Practices
 
 - Always validate configuration before restarting
