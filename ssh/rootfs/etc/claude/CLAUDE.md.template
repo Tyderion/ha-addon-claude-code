@@ -26,7 +26,8 @@ This is a Home Assistant configuration directory.
 ## CLI Tools
 
 All `ha-*` tools (`ha-entities`, `ha-dashboard`, `ha-trace`, `ha-history`,
-`ha-template`, `ha-service`, `ha-reload`) are installed on `PATH`. Invoke
+`ha-template`, `ha-service`, `ha-state`, `ha-reload`) are installed on
+`PATH`. Invoke
 them by bare name exactly as shown below — never `./ha-entities` or any
 other path form; path forms fail and are permission-blocked. If a tool call
 errors, fix the call instead of falling back to ad-hoc WebSocket scripts
@@ -47,6 +48,7 @@ The skills are the source of truth:
 | Does this Jinja template work? What does it evaluate to? | `TestTemplate` |
 | What happened in the past? How long / how often / when last? | `QueryHistory` |
 | Why didn't this automation fire, or what did it actually do? | `DebugAutomation` (traces, not YAML guesswork) |
+| Setting helper/virtual state (booleans, selects, numbers, timers, counters) | `SetState` (`ha-state`) — validated and verified; raw service calls on these domains are refused |
 | Anything touching dashboards, views, cards, badges | `EditDashboard` — **never** edit `.storage/lovelace.*` by hand |
 | Applying YAML changes | `HomeAssistantReload` (`ha-reload`) — prefers hot reload over restart |
 
@@ -128,6 +130,15 @@ ha-service call light.turn_on --entity light.office --data brightness=200
 ```
 Discover real service parameters and call services (see the CallService
 skill). Never guess service fields — `ha-service show` has the actual spec.
+
+### Set Helper State
+```bash
+ha-state show input_select.house_mode
+ha-state set input_boolean.vacation_mode on
+```
+Mutate helpers, counters, timers, and vars with `ha-state` (see the
+SetState skill). It validates the value, calls the right service, and
+verifies the result by reading the state back.
 
 ### List Custom Components
 ```bash

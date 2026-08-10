@@ -31,6 +31,7 @@
       "Bash(ha-history *)",
       "Bash(ha-template *)",
       "Bash(ha-service *)",
+      "Bash(ha-state *)",
       "Read(//tmp/*.json)",
       "Edit(//tmp/*.json)",
       "Bash(bluetoothctl *)"
@@ -58,6 +59,7 @@
       "Bash(./ha-history*)",
       "Bash(./ha-template*)",
       "Bash(./ha-service*)",
+      "Bash(./ha-state*)",
       "Bash(./ha-reload*)"
     ]
   }
