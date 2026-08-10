@@ -11,6 +11,8 @@ description:
 
 Use `ha-entities` to query Home Assistant entity states, areas, domains, scripts, and automations over the WebSocket API.
 
+`ha-entities` is on `PATH`: invoke it by bare name exactly as shown, never `./ha-entities` or another path form — path forms fail and are permission-blocked. If a call errors, fix the invocation rather than dropping to ad-hoc `ha_lib` scripts.
+
 ## Commands
 
 ```bash

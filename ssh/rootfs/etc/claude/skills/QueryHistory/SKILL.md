@@ -13,6 +13,11 @@ description:
 Use `ha-history` to query the recorder's state history and long-term
 statistics over the WebSocket API.
 
+`ha-history` is on `PATH`: invoke it by bare name exactly as shown, never
+`./ha-history` or another path form — path forms fail and are
+permission-blocked. If a call errors, fix the invocation rather than
+dropping to ad-hoc `ha_lib` scripts.
+
 ## Commands
 
 ```bash

@@ -12,6 +12,15 @@ This is a Home Assistant configuration directory.
 - `customize.yaml` - Entity customizations
 - `.storage/` - Internal HA storage (do not edit manually)
 
+## CLI Tools
+
+All `ha-*` tools (`ha-entities`, `ha-dashboard`, `ha-trace`, `ha-history`,
+`ha-template`, `ha-service`, `ha-reload`) are installed on `PATH`. Invoke
+them by bare name exactly as shown below — never `./ha-entities` or any
+other path form; path forms fail and are permission-blocked. If a tool call
+errors, fix the call instead of falling back to ad-hoc WebSocket scripts
+via `ha_lib`.
+
 ## Common Tasks
 
 ### Reload YAML Configuration (PREFERRED)

@@ -13,6 +13,11 @@ description:
 Use `ha-trace` to inspect Home Assistant execution traces — the recorded
 step-by-step history of automation and script runs.
 
+`ha-trace` is on `PATH`: invoke it by bare name exactly as shown, never
+`./ha-trace` or another path form — path forms fail and are
+permission-blocked. If a call errors, fix the invocation rather than
+dropping to ad-hoc `ha_lib` scripts.
+
 ## Commands
 
 ```bash

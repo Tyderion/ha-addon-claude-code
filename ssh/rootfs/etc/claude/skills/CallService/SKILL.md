@@ -13,6 +13,11 @@ description:
 Use `ha-service` to discover services (with their real parameter specs) and
 to call them over the WebSocket API.
 
+`ha-service` is on `PATH`: invoke it by bare name exactly as shown, never
+`./ha-service` or another path form — path forms fail and are
+permission-blocked. If a call errors, fix the invocation rather than
+dropping to ad-hoc `ha_lib` scripts.
+
 ## Commands
 
 ```bash

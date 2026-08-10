@@ -11,6 +11,8 @@ description:
 
 Use `ha-dashboard` to manage Lovelace dashboards through the HA WebSocket API — the same path the frontend uses. This avoids stale file reads; note that a concurrent edit made in the HA UI between `get` and `set` will still be overwritten.
 
+`ha-dashboard` is on `PATH`: invoke it by bare name exactly as shown, never `./ha-dashboard` or another path form — path forms fail and are permission-blocked. If a call errors, fix the invocation rather than dropping to ad-hoc `ha_lib` scripts.
+
 ## Setup
 
 A long-lived HA access token is required (one-time). If it's missing, `ha-dashboard` exits with the exact setup instructions — just follow them (HA UI → Profile → Security → Long-Lived Access Tokens, save to `/homeassistant/.claude/ha_token`).

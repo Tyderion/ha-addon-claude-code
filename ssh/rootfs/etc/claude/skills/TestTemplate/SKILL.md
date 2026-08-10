@@ -14,6 +14,11 @@ description:
 Use `ha-template` to render a Jinja template through the WebSocket
 `render_template` API — the exact engine automations and dashboards use.
 
+`ha-template` is on `PATH`: invoke it by bare name exactly as shown, never
+`./ha-template` or another path form — path forms fail and are
+permission-blocked. If a call errors, fix the invocation rather than
+dropping to ad-hoc `ha_lib` scripts.
+
 ## Commands
 
 ```bash

@@ -51,6 +51,14 @@
       "Bash(curl -s -X POST http://supervisor/*)",
       "Bash(curl -X POST http://supervisor/*)"
     ],
-    "deny": []
+    "deny": [
+      "Bash(./ha-entities*)",
+      "Bash(./ha-dashboard*)",
+      "Bash(./ha-trace*)",
+      "Bash(./ha-history*)",
+      "Bash(./ha-template*)",
+      "Bash(./ha-service*)",
+      "Bash(./ha-reload*)"
+    ]
   }
 }

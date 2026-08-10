@@ -7,6 +7,9 @@ description: Reload Home Assistant YAML configuration. USE WHEN user edits YAML 
 
 Intelligently reload Home Assistant configuration after YAML changes.
 
+`ha-reload` is on `PATH`: invoke it by bare name, never `./ha-reload` or
+another path form — path forms fail and are permission-blocked.
+
 ## When to Use Each Command
 
 | Command           | Use When                                                                               | Downtime       |
