@@ -50,6 +50,19 @@ todo lists...) are handled automatically: `show` marks them
 `returns_response`, and `call` requests and prints the `response` without
 any extra flag.
 
+## Not For
+
+`ha-service` is for device and system commands. It refuses or defers:
+
+- Helper/virtual state (`input_*`, `counter`, `timer`, `var`) — `call`
+  refuses these domains; use `ha-state set` (SetState skill), which
+  validates the value and verifies the result. Only the administrative
+  `reload`/`configure` services pass through.
+- Reading entity state or attributes — `ha-entities` (HAEntities).
+- Rendering or checking templates — `ha-template` (TestTemplate).
+- History and statistics questions — `ha-history` (QueryHistory).
+- Reloading YAML — `ha-reload` (HomeAssistantReload).
+
 ## Dangerous services
 
 `homeassistant.restart/stop`, `hassio.*`, `recorder.purge*`, and

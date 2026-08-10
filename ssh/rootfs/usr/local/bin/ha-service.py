@@ -22,6 +22,10 @@ mapping; --data flags override file keys.
 Dangerous services (restarts, host power, shell commands, recorder purges)
 additionally require --unsafe.
 
+Virtual-state domains (input_*, counter, timer, var) are refused — their
+values are set with `ha-state`, which validates and verifies; only the
+administrative reload/configure services pass through here.
+
 All commands accept --format yaml|json (default: yaml).
 """
 
@@ -47,6 +51,20 @@ DANGEROUS_PATTERNS = (
     "recorder.purge*",
     "shell_command.*",
 )
+
+# Value mutations on these domains belong to ha-state, which validates the
+# value and verifies the result; only helper-administration services pass.
+VIRTUAL_STATE_DOMAINS = (
+    "input_boolean",
+    "input_select",
+    "input_number",
+    "input_text",
+    "input_datetime",
+    "counter",
+    "timer",
+    "var",
+)
+VIRTUAL_STATE_EXEMPT_SERVICES = ("reload", "configure")
 
 
 def print_output(data, fmt):
@@ -249,6 +267,14 @@ def cmd_show(args):
 def cmd_call(args):
     domain, service = split_service(args.service)
     call_id = f"{domain}.{service}"
+
+    if domain in VIRTUAL_STATE_DOMAINS and service not in VIRTUAL_STATE_EXEMPT_SERVICES:
+        raise RuntimeError(
+            f"'{call_id}' mutates virtual state — use "
+            "`ha-state set <entity> <value>` instead "
+            "(`ha-state show <entity>` lists the accepted values)"
+        )
+
     spec = lookup_service(fetch_services(), domain, service)
 
     if is_dangerous(call_id) and not args.unsafe:
