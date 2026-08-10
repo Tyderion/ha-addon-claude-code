@@ -2,6 +2,17 @@
 
 This is a Home Assistant configuration directory.
 
+## Environment
+
+- **Working directory**: `/homeassistant` — the same directory HA itself
+  sees as `/config`. Use `/config/...` inside anything HA executes
+  (`shell_command`, `python_script`), and `/homeassistant/...` for your
+  own tool calls.
+- **URL**: http://homeassistant.local:8123
+- Do not hardcode version numbers anywhere. Read them when needed:
+  `ha core info` (Core version, update availability), `ha os info`
+  (HAOS version).
+
 ## Directory Structure
 
 - `configuration.yaml` - Main configuration file
@@ -20,6 +31,28 @@ them by bare name exactly as shown below — never `./ha-entities` or any
 other path form; path forms fail and are permission-blocked. If a tool call
 errors, fix the call instead of falling back to ad-hoc WebSocket scripts
 via `ha_lib`.
+
+## Discover, Never Guess
+
+Entities, areas, services, and integrations change without this file
+changing. **Never write an entity ID, service field, area name, or
+integration name from memory or from this file — look it up first.**
+The skills are the source of truth:
+
+| Question | Use |
+|---|---|
+| What is the entity ID for X? What's its state/attributes? | `HAEntities` |
+| What areas / domains / scripts / automations exist? | `HAEntities` (`areas`, `domains`, `scripts`, `automations`) |
+| What fields does this service take? What are the valid values? | `CallService` — check `ha-service show` before writing service data anywhere |
+| Does this Jinja template work? What does it evaluate to? | `TestTemplate` |
+| What happened in the past? How long / how often / when last? | `QueryHistory` |
+| Why didn't this automation fire, or what did it actually do? | `DebugAutomation` (traces, not YAML guesswork) |
+| Anything touching dashboards, views, cards, badges | `EditDashboard` — **never** edit `.storage/lovelace.*` by hand |
+| Applying YAML changes | `HomeAssistantReload` (`ha-reload`) — prefers hot reload over restart |
+
+Useful starting points: `ha-entities list --search "<fragment>"` to find
+an entity, `ha-entities areas` for the area list, `ha-entities scripts`
+to resolve numeric script IDs to their aliases.
 
 ## Common Tasks
 
@@ -96,9 +129,30 @@ ha-service call light.turn_on --entity light.office --data brightness=200
 Discover real service parameters and call services (see the CallService
 skill). Never guess service fields — `ha-service show` has the actual spec.
 
+### List Custom Components
+```bash
+ls custom_components/
+grep -h '"name"\|"version"\|"documentation"' custom_components/*/manifest.json
+```
+Enumerate custom components rather than trusting a list written down
+anywhere — each `manifest.json` gives the upstream repo, version, and
+`iot_class`.
+
 ## Best Practices
 
 - Always validate configuration before restarting
 - Use `secrets.yaml` for sensitive values
 - Use packages in `packages/` directory for modular configuration
 - Back up before major changes: `ha backup create`
+- Verify automation behaviour with traces (`DebugAutomation`), not by
+  re-reading your own YAML
+- Older UI-created scripts may have numeric IDs; map them to aliases with
+  `ha-entities scripts`, and prefer descriptive slugs for anything new
+- Some `light.*`/`switch.*` entities are UI group helpers aggregating
+  others — check with `HAEntities` before assuming an entity maps to one
+  physical device
+- Multiple radio stacks can coexist (ZHA, Zigbee2MQTT, Thread/Matter);
+  the owning integration determines a device's trigger style, so confirm
+  which stack owns a device before writing triggers for it
+- Devices that are unplugged part of the year report `unavailable` for
+  months — check history before treating that as a fault
