@@ -109,12 +109,17 @@ if ! bashio::fs.directory_exists "${CLAUDE_PERSISTENT_PATH}"; then
     fi
 fi
 
-# Merge new default permissions into existing settings on every start
+# Merge new defaults into existing settings on every start.
+# Permissions are additive (user entries are never dropped) and user `env`
+# wins over ours, but `statusLine` and `hooks` are app-managed: they point at
+# /etc/claude and must track the image, so the defaults overwrite them.
 if bashio::fs.file_exists "${CLAUDE_DEFAULT_SETTINGS}" \
     && bashio::fs.file_exists "${CLAUDE_PERSISTENT_PATH}/settings.json"; then
     merged=$(jq -s '
         .[0] as $current | .[1] as $defaults |
-        $current * {
+        ($defaults | {statusLine, hooks} | with_entries(select(.value != null))) as $managed |
+        $current * $managed * {
+            env: (($defaults.env // {}) * ($current.env // {})),
             permissions: {
                 allow: (($current.permissions.allow // []) + ($defaults.permissions.allow // []) | unique),
                 ask: (($current.permissions.ask // []) + ($defaults.permissions.ask // []) | unique),

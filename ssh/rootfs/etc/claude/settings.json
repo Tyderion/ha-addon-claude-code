@@ -4,20 +4,53 @@
     "command": "/etc/claude/statusline.sh",
     "padding": 0
   },
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "600000"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /etc/claude/hooks/rewrite-ha-tool-path.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /etc/claude/hooks/validate_ha_yaml.py"
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Read(/homeassistant/**)",
       "Edit(/homeassistant/**)",
+      "Write(/homeassistant/**)",
       "Read(/addon_configs/**)",
       "Edit(/addon_configs/**)",
+      "Write(/addon_configs/**)",
       "Read(/addons/**)",
       "Read(/backup/**)",
       "Read(/media/**)",
       "Read(/share/**)",
       "Edit(/share/**)",
+      "Write(/share/**)",
       "Read(/ssl/**)",
+      "Glob",
+      "Grep",
       "Bash(ha *)",
       "Bash(yamllint *)",
+      "Bash(yamllint:*)",
       "Bash(cat *)",
       "Bash(ls *)",
       "Bash(sqlite3 *)",
@@ -32,6 +65,54 @@
       "Bash(ha-template *)",
       "Bash(ha-service *)",
       "Bash(ha-state *)",
+      "Bash(ha-entities:*)",
+      "Bash(ha-dashboard:*)",
+      "Bash(ha-trace:*)",
+      "Bash(ha-history:*)",
+      "Bash(ha-template:*)",
+      "Bash(ha-service:*)",
+      "Bash(ha-state:*)",
+      "Bash(ha-reload:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(egrep:*)",
+      "Bash(fgrep:*)",
+      "Bash(ack:*)",
+      "Bash(find:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(cut:*)",
+      "Bash(tr:*)",
+      "Bash(column:*)",
+      "Bash(awk:*)",
+      "Bash(jq:*)",
+      "Bash(diff:*)",
+      "Bash(colordiff:*)",
+      "Bash(stat:*)",
+      "Bash(file:*)",
+      "Bash(basename:*)",
+      "Bash(dirname:*)",
+      "Bash(realpath:*)",
+      "Bash(readlink:*)",
+      "Bash(which:*)",
+      "Bash(date:*)",
+      "Bash(df:*)",
+      "Bash(du:*)",
+      "Bash(free:*)",
+      "Bash(uptime)",
+      "Bash(uname:*)",
+      "Bash(echo:*)",
+      "Bash(printf:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git rev-parse:*)",
       "Read(//tmp/*.json)",
       "Edit(//tmp/*.json)",
       "Bash(bluetoothctl *)"
@@ -53,6 +134,8 @@
       "Bash(curl -X POST http://supervisor/*)"
     ],
     "deny": [
+      "Edit(/homeassistant/.storage/**)",
+      "Write(/homeassistant/.storage/**)",
       "Bash(./ha-entities*)",
       "Bash(./ha-dashboard*)",
       "Bash(./ha-trace*)",

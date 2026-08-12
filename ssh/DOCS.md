@@ -287,20 +287,47 @@ and context window usage.
 
 Claude Code comes with default permissions optimized for Home Assistant:
 
-- **Read/Edit**: `/homeassistant/**` (your HA config)
-- **Read/Edit**: `/addon_configs/**`, `/share/**`
+- **Read/Edit/Write**: `/homeassistant/**` (your HA config), `/addon_configs/**`, `/share/**`
 - **Read**: `/addons/**`, `/backup/**`, `/media/**`, `/ssl/**`
-- **Bash**: `ha *` (HA CLI), `ha-reload`, `yamllint *`, `cat *`, `ls *`, `sqlite3 *`, `python3 *`, `bluetoothctl *`, `curl` GETs to `http://supervisor/*`
+- **Bash**: `ha *` (HA CLI), the bundled `ha-*` tools, `yamllint`, `bluetoothctl`,
+  `sqlite3`, `python3`, and read-only shell utilities (`rg`, `grep`, `find`,
+  `head`, `tail`, `wc`, `sort`, `jq`, `diff`, `stat`, `date`, `df`, and
+  read-only `git` subcommands), plus `curl` GETs to `http://supervisor/*`
+
+`sed` and `awk -i` style in-place editors are deliberately _not_ allowed:
+edits should go through Claude's own edit tools so the YAML check below runs.
 
 Destructive operations always ask for confirmation first, even though `ha *`
 is allowed: `ha core restart/stop/update`, `ha host reboot/shutdown`,
 `ha backup restore`, `ha addons uninstall/stop`, `ha os update`,
 `ha supervisor update`, and `curl` POSTs to the Supervisor API (which can
-call any HA service, restart core, or restore backups).
+call any HA service, restart core, or restore backups). Writes to
+`/homeassistant/.storage/**` are denied outright — that directory is HA's
+internal state and is edited through the UI or `ha-dashboard`, never by hand.
 
 These permissions are stored in `/share/.claude/settings.json` and persist across
 restarts. New defaults are merged in additively on every start. You can customize
 them by editing this file or using Claude's `/permissions` command.
+
+### Guardrails
+
+Two hooks ship with the app and are registered automatically in
+`/share/.claude/settings.json`:
+
+- **Tool path rewriting** — Claude reaching for `./ha-entities`,
+  `/usr/local/bin/ha-service` or `python3 ha-state.py` has the command
+  rewritten to the bare PATH name before it runs. Without this, those forms
+  miss the allow rules, prompt you needlessly, and push Claude toward
+  hand-rolled scripts instead of the real tools.
+- **YAML validation** — every edit to a `.yaml` file under `/homeassistant`
+  is parsed immediately. Home Assistant's custom tags (`!secret`, `!include*`,
+  `!input`) are understood, and duplicate top-level keys are reported as
+  errors because they silently discard the earlier block. Failures are handed
+  straight back to Claude to fix. Style is not checked; run `yamllint` for that.
+
+Unlike permissions, the `statusLine` and `hooks` sections are app-managed:
+they point at files in `/etc/claude` and are overwritten from the image on
+every start, so custom hooks belong in a separate settings file.
 
 ### Custom Project Instructions
 
