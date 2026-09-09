@@ -7,8 +7,18 @@
   "env": {
     "BASH_DEFAULT_TIMEOUT_MS": "600000"
   },
+  "skipAutoPermissionPrompt": true,
   "hooks": {
     "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /etc/claude/hooks/guard-destructive.sh"
+          }
+        ]
+      },
       {
         "matcher": "Bash",
         "hooks": [
@@ -31,7 +41,61 @@
       }
     ]
   },
+  "autoMode": {
+    "environment": [
+      "This is a Home Assistant OS add-on container dedicated to editing one Home Assistant instance. It runs as root by design and holds Supervisor API credentials. The trust boundary is the container itself, not the individual shell command: any command that can reach the Supervisor API can already restart Core or read every secret, so nickel-and-diming individual binaries buys no safety.",
+      "/homeassistant is the Home Assistant configuration directory (what HA itself calls /config). Reading, editing and writing YAML, Jinja templates, packages, custom_components and dashboards there is the entire point of this add-on and is routine work.",
+      "/share, /addon_configs, /media, /ssl, /backup and /addons are mapped Home Assistant directories. Reading them is always routine; writing under /share and /addon_configs is routine.",
+      "The bundled ha-* CLI tools (ha-entities, ha-dashboard, ha-trace, ha-history, ha-template, ha-service, ha-state, ha-reload) are the sanctioned way to talk to Home Assistant. They are read-mostly, validated, and always safe to run.",
+      "Ad-hoc python3 and bash are normal here: inspecting the recorder SQLite database, parsing YAML, computing statistics over history, and prototyping Jinja templates all happen through short throwaway scripts, including heredocs.",
+      "Compound shell commands are the normal shape of investigation in this container: pipes through jq/rg/grep/sort/head, `cd <dir> && <command>`, and command substitution over the mapped directories are read-only plumbing and should be approved when the individual parts are themselves routine.",
+      "Trusted local services: http://supervisor (the Supervisor API, authenticated by SUPERVISOR_TOKEN) and http://homeassistant.local:8123."
+    ],
+    "allow": [
+      "Reading any file under /homeassistant, /addon_configs, /addons, /backup, /media, /share or /ssl is always safe.",
+      "Writing and editing files under /homeassistant, /addon_configs and /share is the add-on's core purpose and is always approved. Edits to YAML are parse-checked automatically by a PostToolUse hook, so a broken file comes straight back to the model.",
+      "Running any ha-* bundled tool, the `ha` Supervisor CLI in a read/inspect form (info, list, logs, stats, check), yamllint, and read-only git subcommands is safe.",
+      "Running python3 or bash for inspection and computation is safe, including heredoc scripts, one-liners with -c, and scripts written to /tmp first.",
+      "Querying the recorder database with sqlite3 is safe; it is Home Assistant's own history and the queries here are read-only analysis.",
+      "GET requests with curl to http://supervisor/* and http://homeassistant.local:8123/* are read-only API calls and are safe.",
+      "Piping through rg, grep, jq, yq, sort, uniq, head, tail, wc, cut, awk and column is read-only filtering and always safe.",
+      "Creating directories and temporary files under /tmp, /share and /homeassistant, and moving or copying files between them, is routine configuration work.",
+      "Reloading Home Assistant configuration via ha-reload or a `ha core check` is routine and reversible; it is how a YAML change is applied.",
+      "Installing a package with apk add for a one-off analysis task is routine in this disposable container."
+    ],
+    "hard_deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf /homeassistant*)",
+      "Bash(rm -rf /config*)",
+      "Bash(rm -rf /share*)",
+      "Bash(rm -rf /data*)",
+      "Bash(rm -rf /backup*)",
+      "Bash(rm -rf /addon_configs*)",
+      "Bash(rm -rf /root*)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf $HOME*)",
+      "Bash(rm -fr*)",
+      "Bash(rm -r -f*)",
+      "Bash(mkfs*)",
+      "Bash(dd if=*of=/dev/*)",
+      "Bash(curl* | sh*)",
+      "Bash(curl* | bash*)",
+      "Bash(wget* | sh*)",
+      "Bash(wget* | bash*)",
+      "Bash(ha host shutdown*)",
+      "Bash(ha host reboot*)",
+      "Bash(ha backup restore*)",
+      "Bash(ha backups restore*)",
+      "Bash(ha addons uninstall*)",
+      "Bash(ha os update*)",
+      "Bash(ha supervisor update*)",
+      "Edit(/homeassistant/.storage/**)",
+      "Write(/homeassistant/.storage/**)"
+    ]
+  },
   "permissions": {
+    "defaultMode": "auto",
     "allow": [
       "Read(/homeassistant/**)",
       "Edit(/homeassistant/**)",
@@ -46,25 +110,19 @@
       "Edit(/share/**)",
       "Write(/share/**)",
       "Read(/ssl/**)",
+      "Read(//tmp/*.json)",
+      "Edit(//tmp/*.json)",
       "Glob",
       "Grep",
-      "Bash(ha *)",
-      "Bash(yamllint *)",
+      "Bash(ha:*)",
       "Bash(yamllint:*)",
-      "Bash(cat *)",
-      "Bash(ls *)",
-      "Bash(sqlite3 *)",
-      "Bash(python3 *)",
-      "Bash(curl -s -X GET http://supervisor/*)",
-      "Bash(curl -s http://supervisor/*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(sqlite3:*)",
+      "Bash(python3:*)",
+      "Bash(curl -s -X GET http://supervisor/:*)",
+      "Bash(curl -s http://supervisor/:*)",
       "Bash(ha-reload)",
-      "Bash(ha-entities *)",
-      "Bash(ha-dashboard *)",
-      "Bash(ha-trace *)",
-      "Bash(ha-history *)",
-      "Bash(ha-template *)",
-      "Bash(ha-service *)",
-      "Bash(ha-state *)",
       "Bash(ha-entities:*)",
       "Bash(ha-dashboard:*)",
       "Bash(ha-trace:*)",
@@ -113,37 +171,37 @@
       "Bash(git branch:*)",
       "Bash(git ls-files:*)",
       "Bash(git rev-parse:*)",
-      "Read(//tmp/*.json)",
-      "Edit(//tmp/*.json)",
-      "Bash(bluetoothctl *)"
+      "Bash(bluetoothctl:*)"
     ],
     "ask": [
-      "Bash(*--unsafe*)",
-      "Bash(ha core restart*)",
-      "Bash(ha core stop*)",
-      "Bash(ha core update*)",
-      "Bash(ha host reboot*)",
-      "Bash(ha host shutdown*)",
-      "Bash(ha backup restore*)",
-      "Bash(ha backups restore*)",
-      "Bash(ha addons uninstall*)",
-      "Bash(ha addons stop*)",
-      "Bash(ha os update*)",
-      "Bash(ha supervisor update*)",
-      "Bash(curl -s -X POST http://supervisor/*)",
-      "Bash(curl -X POST http://supervisor/*)"
+      "Bash(ha core restart:*)",
+      "Bash(ha core stop:*)",
+      "Bash(ha core update:*)",
+      "Bash(ha host reboot:*)",
+      "Bash(ha host shutdown:*)",
+      "Bash(ha backup restore:*)",
+      "Bash(ha backups restore:*)",
+      "Bash(ha addons uninstall:*)",
+      "Bash(ha addons stop:*)",
+      "Bash(ha os update:*)",
+      "Bash(ha supervisor update:*)",
+      "Bash(curl -s -X POST http://supervisor/:*)",
+      "Bash(curl -X POST http://supervisor/:*)",
+      "Read(/homeassistant/secrets.yaml)",
+      "Edit(/homeassistant/secrets.yaml)",
+      "Write(/homeassistant/secrets.yaml)"
     ],
     "deny": [
       "Edit(/homeassistant/.storage/**)",
       "Write(/homeassistant/.storage/**)",
-      "Bash(./ha-entities*)",
-      "Bash(./ha-dashboard*)",
-      "Bash(./ha-trace*)",
-      "Bash(./ha-history*)",
-      "Bash(./ha-template*)",
-      "Bash(./ha-service*)",
-      "Bash(./ha-state*)",
-      "Bash(./ha-reload*)"
+      "Bash(./ha-entities:*)",
+      "Bash(./ha-dashboard:*)",
+      "Bash(./ha-trace:*)",
+      "Bash(./ha-history:*)",
+      "Bash(./ha-template:*)",
+      "Bash(./ha-service:*)",
+      "Bash(./ha-state:*)",
+      "Bash(./ha-reload:*)"
     ]
   }
 }

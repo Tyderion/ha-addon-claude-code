@@ -30,3 +30,12 @@ jobs:
         uses: prefix-dev/setup-pixi@a09b6247153796b190642a2b53fac4241043cf6f # v0.10.0
       - name: 🚀 Run format checks
         run: pixi run fmt-check
+
+  test:
+    name: Hook tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: 🚀 Run hook tests
+        run: bash ssh/tests/guard-destructive.test.sh

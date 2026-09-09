@@ -102,6 +102,7 @@ packages:
 init_commands:
   - ls -la
 claude_md: []
+claude_permission_mode: auto
 ```
 
 **Note**: _This is just an example, don't copy and paste it! Create your own!_
@@ -259,6 +260,33 @@ claude_md:
 If left empty, the file is not touched, allowing you to edit it directly via
 the File Editor app or VS Code.
 
+#### Option: `claude_permission_mode`
+
+Controls how much Claude Code asks before it acts. This sets
+`permissions.defaultMode` in the persistent settings file on every app start,
+so it is the one place to change the behaviour.
+
+- `auto` (default) — Claude decides for itself whether an operation is
+  routine, using the description of this container in the `autoMode` section
+  of the settings file. Routine Home Assistant work (reading and editing
+  config, running the `ha-*` tools, throwaway `python3` analysis, piped
+  investigation commands) runs without prompting; the `ask` rules and the
+  destructive guard hook still apply.
+- `default` — the stock Claude Code behaviour. Everything that is not matched
+  by an explicit `allow` rule prompts you. Safest, and by far the noisiest,
+  because the shapes Claude actually writes (heredocs, pipes,
+  `cd x && y`) never match a prefix rule.
+- `acceptEdits` — like `default`, but file edits inside the working directory
+  are approved automatically while commands still prompt.
+- `bypassPermissions` — nothing prompts. The `deny` and `ask` rules are
+  skipped entirely; only the destructive guard hook still holds, because
+  hooks run in every mode. Use this only if you understand that Claude then
+  has the same reach into your Home Assistant instance that you do over SSH.
+
+```yaml
+claude_permission_mode: auto
+```
+
 ## Using Claude Code
 
 This app comes with [Claude Code][claude-code] pre-installed, an AI-powered
@@ -285,35 +313,62 @@ and context window usage.
 
 ### Pre-configured Permissions
 
-Claude Code comes with default permissions optimized for Home Assistant:
+The default permission mode is `auto` (see
+[`claude_permission_mode`](#option-claude_permission_mode)). The trust
+boundary is the container, not the individual command: this app runs as root
+and holds a Supervisor API token, so anything that can reach the Supervisor
+can already restart Core and read every secret. Arguing over which binaries
+Claude may invoke buys no safety, and in the stock `default` mode it bought a
+prompt on nearly every command, because heredoc `python3` scripts, pipes and
+`cd x && y` chains never match a prefix allow rule.
 
-- **Read/Edit/Write**: `/homeassistant/**` (your HA config), `/addon_configs/**`, `/share/**`
+So the settings file describes the container to Claude instead, in an
+`autoMode` block, and lets it approve routine Home Assistant work by itself:
+reading and editing config under `/homeassistant`, running the bundled `ha-*`
+tools, `sqlite3` queries against the recorder database, throwaway `python3`
+and `bash` analysis, and read-only pipelines through `jq`, `rg` and friends.
+
+Explicit rules still exist and still take precedence:
+
+- **Read/Edit/Write**: `/homeassistant/**`, `/addon_configs/**`, `/share/**`
 - **Read**: `/addons/**`, `/backup/**`, `/media/**`, `/ssl/**`
-- **Bash**: `ha *` (HA CLI), the bundled `ha-*` tools, `yamllint`, `bluetoothctl`,
-  `sqlite3`, `python3`, and read-only shell utilities (`rg`, `grep`, `find`,
-  `head`, `tail`, `wc`, `sort`, `jq`, `diff`, `stat`, `date`, `df`, and
-  read-only `git` subcommands), plus `curl` GETs to `http://supervisor/*`
+- **Bash**: the `ha` CLI, the bundled `ha-*` tools, `yamllint`, `sqlite3`,
+  `python3`, `bluetoothctl`, read-only shell utilities and `git`
+  subcommands, and `curl` GETs to `http://supervisor/*`
 
-`sed` and `awk -i` style in-place editors are deliberately _not_ allowed:
-edits should go through Claude's own edit tools so the YAML check below runs.
-
-Destructive operations always ask for confirmation first, even though `ha *`
-is allowed: `ha core restart/stop/update`, `ha host reboot/shutdown`,
+**Always asks first**, in every mode except `bypassPermissions`:
+`ha core restart/stop/update`, `ha host reboot/shutdown`,
 `ha backup restore`, `ha addons uninstall/stop`, `ha os update`,
-`ha supervisor update`, and `curl` POSTs to the Supervisor API (which can
-call any HA service, restart core, or restore backups). Writes to
-`/homeassistant/.storage/**` are denied outright — that directory is HA's
-internal state and is edited through the UI or `ha-dashboard`, never by hand.
+`ha supervisor update`, `curl` POSTs to the Supervisor API (which can call
+any service, restart Core, or restore a backup), and reading or writing
+`secrets.yaml`.
 
-These permissions are stored in `/share/.claude/settings.json` and persist across
-restarts. New defaults are merged in additively on every start. You can customize
-them by editing this file or using Claude's `/permissions` command.
+**Denied outright**: edits to `/homeassistant/.storage/**`. That directory is
+Home Assistant's internal state; dashboards go through `ha-dashboard` and
+everything else through the UI.
+
+These permissions live in `/share/.claude/settings.json` and persist across
+restarts. New defaults are merged in additively on every start, so rules you
+add by hand or with Claude's `/permissions` command are never dropped. The
+one exception is a short list of rules the app itself shipped in earlier
+versions and has since replaced (`/etc/claude/settings-stale.json`); those
+are pruned by exact match, because they used a `Bash(cmd *)` glob form that
+never actually matched anything and only made the file look protective.
 
 ### Guardrails
 
-Two hooks ship with the app and are registered automatically in
+Three hooks ship with the app and are registered automatically in
 `/share/.claude/settings.json`:
 
+- **Destructive guard** — a `PreToolUse` hook that blocks a small set of
+  operations outright, whatever the permission mode: recursive deletes
+  targeting `/` or a mapped Home Assistant directory, `mkfs` and `dd` writes
+  to device nodes, piping a download straight into a shell, and any shell
+  write into `.storage`. Hooks run even under `bypassPermissions`, which is
+  the point — this is the floor that holds when the permission rules are
+  switched off. Merely consequential operations (restarts, reboots, backup
+  restores) are deliberately _not_ here; those are things you legitimately
+  ask for, so they sit in the `ask` list instead.
 - **Tool path rewriting** — Claude reaching for `./ha-entities`,
   `/usr/local/bin/ha-service` or `python3 ha-state.py` has the command
   rewritten to the bare PATH name before it runs. Without this, those forms
@@ -325,8 +380,8 @@ Two hooks ship with the app and are registered automatically in
   errors because they silently discard the earlier block. Failures are handed
   straight back to Claude to fix. Style is not checked; run `yamllint` for that.
 
-Unlike permissions, the `statusLine` and `hooks` sections are app-managed:
-they point at files in `/etc/claude` and are overwritten from the image on
+Unlike permissions, the `statusLine`, `hooks` and `autoMode` sections are
+app-managed: they describe what the image ships and are overwritten from it on
 every start, so custom hooks belong in a separate settings file.
 
 ### Custom Project Instructions

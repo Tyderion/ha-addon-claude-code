@@ -1,0 +1,47 @@
+{
+  "_comment": "Permission rules that shipped as add-on defaults in earlier versions and have since been replaced. The additive merge in init-user/run can never drop an entry on its own, so these are pruned from the persistent settings.json by exact string match on every start. Everything here used the undocumented `Bash(cmd *)` space-glob form, which does not match the way `Bash(cmd:*)` does, so the rules were dead weight that still made the file look protective.",
+  "allow": [
+    "Bash(ha *)",
+    "Bash(yamllint *)",
+    "Bash(cat *)",
+    "Bash(ls *)",
+    "Bash(sqlite3 *)",
+    "Bash(python3 *)",
+    "Bash(curl -s -X GET http://supervisor/*)",
+    "Bash(curl -s http://supervisor/*)",
+    "Bash(ha-entities *)",
+    "Bash(ha-dashboard *)",
+    "Bash(ha-trace *)",
+    "Bash(ha-history *)",
+    "Bash(ha-template *)",
+    "Bash(ha-service *)",
+    "Bash(ha-state *)",
+    "Bash(bluetoothctl *)"
+  ],
+  "ask": [
+    "Bash(*--unsafe*)",
+    "Bash(ha core restart*)",
+    "Bash(ha core stop*)",
+    "Bash(ha core update*)",
+    "Bash(ha host reboot*)",
+    "Bash(ha host shutdown*)",
+    "Bash(ha backup restore*)",
+    "Bash(ha backups restore*)",
+    "Bash(ha addons uninstall*)",
+    "Bash(ha addons stop*)",
+    "Bash(ha os update*)",
+    "Bash(ha supervisor update*)",
+    "Bash(curl -s -X POST http://supervisor/*)",
+    "Bash(curl -X POST http://supervisor/*)"
+  ],
+  "deny": [
+    "Bash(./ha-entities*)",
+    "Bash(./ha-dashboard*)",
+    "Bash(./ha-trace*)",
+    "Bash(./ha-history*)",
+    "Bash(./ha-template*)",
+    "Bash(./ha-service*)",
+    "Bash(./ha-state*)",
+    "Bash(./ha-reload*)"
+  ]
+}

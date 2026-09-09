@@ -19,6 +19,7 @@ readonly CLAUDE_JSON=/root/.claude.json
 readonly CLAUDE_PERSISTENT_PATH=/share/.claude
 readonly CLAUDE_PERSISTENT_JSON=/share/.claude.json
 readonly CLAUDE_DEFAULT_SETTINGS=/etc/claude/settings.json
+readonly CLAUDE_STALE_SETTINGS=/etc/claude/settings-stale.json
 
 # Links some common directories to the user's home folder for convenience
 for dir in "${DIRECTORIES[@]}"; do
@@ -110,24 +111,53 @@ if ! bashio::fs.directory_exists "${CLAUDE_PERSISTENT_PATH}"; then
 fi
 
 # Merge new defaults into existing settings on every start.
-# Permissions are additive (user entries are never dropped) and user `env`
-# wins over ours, but `statusLine` and `hooks` are app-managed: they point at
-# /etc/claude and must track the image, so the defaults overwrite them.
+#
+#   permissions.{allow,ask,deny}  additive; user entries are never dropped,
+#                                 except for rules listed in settings-stale.json
+#                                 (defaults we shipped and have since replaced)
+#   permissions.defaultMode       from the `claude_permission_mode` option, which
+#                                 is the user's control surface for it
+#   env                           defaults fill in, user wins
+#   skipAutoPermissionPrompt      default fills in, user wins
+#   statusLine, hooks, autoMode   app-managed; they describe what the image
+#                                 ships, so the defaults overwrite them
 if bashio::fs.file_exists "${CLAUDE_DEFAULT_SETTINGS}" \
     && bashio::fs.file_exists "${CLAUDE_PERSISTENT_PATH}/settings.json"; then
-    merged=$(jq -s '
-        .[0] as $current | .[1] as $defaults |
-        ($defaults | {statusLine, hooks} | with_entries(select(.value != null))) as $managed |
-        $current * $managed * {
+    permission_mode=$(bashio::config 'claude_permission_mode' 'auto')
+    case "${permission_mode}" in
+        default | acceptEdits | auto | bypassPermissions) ;;
+        *)
+            bashio::log.warning \
+                "Unknown claude_permission_mode '${permission_mode}', falling back to 'auto'"
+            permission_mode=auto
+            ;;
+    esac
+
+    stale="${CLAUDE_STALE_SETTINGS}"
+    bashio::fs.file_exists "${stale}" || stale=/dev/null
+
+    merged=$(jq -s --arg mode "${permission_mode}" '
+        .[0] as $current | .[1] as $defaults | (.[2] // {}) as $stale |
+        ($defaults | {statusLine, hooks, autoMode} | with_entries(select(.value != null))) as $managed |
+        ($defaults | {skipAutoPermissionPrompt} | with_entries(select(.value != null))) as $fill |
+        def keep($key): (($current.permissions[$key] // []) - ($stale[$key] // []))
+            + ($defaults.permissions[$key] // []) | unique;
+        $fill * $current * $managed * {
             env: (($defaults.env // {}) * ($current.env // {})),
             permissions: {
-                allow: (($current.permissions.allow // []) + ($defaults.permissions.allow // []) | unique),
-                ask: (($current.permissions.ask // []) + ($defaults.permissions.ask // []) | unique),
-                deny: (($current.permissions.deny // []) + ($defaults.permissions.deny // []) | unique)
+                allow: keep("allow"),
+                ask: keep("ask"),
+                deny: keep("deny"),
+                defaultMode: (
+                    if $mode == "" then
+                        ($current.permissions.defaultMode // $defaults.permissions.defaultMode)
+                    else $mode end
+                )
             }
         }
-    ' "${CLAUDE_PERSISTENT_PATH}/settings.json" "${CLAUDE_DEFAULT_SETTINGS}" 2>/dev/null) \
+    ' "${CLAUDE_PERSISTENT_PATH}/settings.json" "${CLAUDE_DEFAULT_SETTINGS}" "${stale}" 2> /dev/null) \
         && echo "${merged}" > "${CLAUDE_PERSISTENT_PATH}/settings.json" \
+        && bashio::log.info "Claude Code permission mode: ${permission_mode}" \
         || bashio::log.warning 'Failed to merge default Claude settings'
 fi
 

@@ -37,6 +37,13 @@ Editing a `.yaml` file under `/homeassistant` triggers an automatic parse
 check (syntax plus duplicate top-level keys). If it fails, the error comes
 back to you as a tool error — fix it before reloading.
 
+A small set of operations is blocked by a hook rather than by the permission
+system, so no amount of retrying or re-asking will get them through: recursive
+deletes of a mapped directory, `mkfs`/`dd` onto a device, piping a download
+into a shell, and any shell write into `.storage`. If one of those comes back
+blocked, take a different route — `ha-dashboard` for dashboards, the Home
+Assistant UI for the rest — and do not try to work around the guard.
+
 ## Discover, Never Guess
 
 Entities, areas, services, and integrations change without this file

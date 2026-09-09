@@ -67,6 +67,7 @@ options:
   packages: []
   init_commands: []
   claude_md: []
+  claude_permission_mode: auto
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)?
   ssh:
@@ -87,3 +88,4 @@ schema:
     - str
   claude_md:
     - str
+  claude_permission_mode: list(default|acceptEdits|auto|bypassPermissions)?
