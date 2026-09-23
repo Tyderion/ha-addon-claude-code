@@ -302,9 +302,9 @@ The name is applied to interactive and `-p` sessions alike, including
 `claude update` and `claude doctor` are left alone, and an explicit
 `claude -n "Something else"` always wins.
 
-If two sessions run at the same time with the same name, Claude appends a
-number to the later one, e.g. `Home Assistant (2)`. That happens when you keep
-the web terminal open and log in over SSH with `share_sessions` disabled.
+Sessions running at the same time all carry the same name, e.g. a second tmux
+window, or an SSH login with `share_sessions` disabled. To tell one apart,
+start it with `claude -n "Something else"`.
 
 ```yaml
 claude_session_name: Home Assistant
