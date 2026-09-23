@@ -63,6 +63,7 @@ The skills are the source of truth:
 | Why didn't this automation fire, or what did it actually do? | `DebugAutomation` (traces, not YAML guesswork) |
 | Setting helper/virtual state (booleans, selects, numbers, timers, counters) | `SetState` (`ha-state`) — validated and verified; raw service calls on these domains are refused |
 | Renaming an entity or device, moving it to an area, icon, hide/disable, changing an entity_id | `UpdateEntity` (`ha-entities update` / `rename`) — **never** edit `.storage/core.entity_registry` or `core.device_registry` |
+| What uses this entity or device? Is it safe to rename, remove or replace? | `EntityReferences` (`ha-entities refs`) — covers UI dashboards, helpers and device triggers that a grep misses |
 | Anything touching dashboards, views, cards, badges | `EditDashboard` — **never** edit `.storage/lovelace.*` by hand |
 | Applying YAML changes | `HomeAssistantReload` (`ha-reload`) — prefers hot reload over restart |
 
@@ -157,11 +158,14 @@ verifies the result by reading the state back.
 ### Rename or Move Entities
 ```bash
 ha-entities update light.hue_lamp_1 --name "Kitchen Ceiling" --area Kitchen
-ha-entities rename light.hue_lamp_1 light.kitchen_ceiling --dry-run
+ha-entities refs light.hue_lamp_1
+ha-entities rename light.hue_lamp_1 light.kitchen_ceiling
 ```
 Change names, areas, icons, visibility and entity_ids through the registry
-API (see the UpdateEntity skill). `rename` lists every file that still uses
-the old entity_id; update those afterwards, since Home Assistant does not.
+API (see the UpdateEntity skill). Check what uses an entity first with
+`refs` (see the EntityReferences skill); `rename` lists the files that still
+use the old entity_id, and those need updating afterwards, since Home
+Assistant does not rewrite them.
 
 ### List Custom Components
 ```bash

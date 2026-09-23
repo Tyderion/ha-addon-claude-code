@@ -57,8 +57,8 @@ ha-entities update light.hue_color_lamp_1 --reset-name --no-area
 ha-entities update sensor.lamp_signal_strength --hidden
 ha-entities update sensor.lamp_signal_strength --disable
 
-# Change an entity_id: list what still references it first
-ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling --dry-run
+# Change an entity_id: check what uses it first, then rename
+ha-entities refs light.hue_color_lamp_1
 ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling
 ```
 
@@ -72,11 +72,15 @@ ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling
    entity-level area or name overrides the device's for that entity only.
 3. **Run it** and read `changes` (each field before and after) and
    `verified`. A mismatch exits 1 and names the fields that differ.
-4. **For `rename`**, always do `--dry-run` first and show the user the
-   `references`. Home Assistant does not rewrite YAML: after renaming,
+4. **For `rename`**, first run `ha-entities refs` on every entity you
+   plan to rename (`refs <entity> --device` covers all of a device's
+   entities in one call; see the EntityReferences skill) and show the user
+   what uses them. Then rename. Home Assistant does not rewrite YAML:
    update every listed YAML file with the Edit tool and run `ha-reload`.
    References under `.storage` are UI-made dashboards (fix with
    `ha-dashboard`) or UI helpers (fix in the UI, never by hand).
+   Renaming a device does not change its entity_ids, so a device
+   `--name` alone breaks nothing.
 
 ## Gotchas
 

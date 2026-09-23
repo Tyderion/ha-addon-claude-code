@@ -13,6 +13,7 @@ Usage:
                      [--area AREA | --no-area] [--icon ICON | --reset-icon]
                      [--hidden | --visible] [--disable | --enable] [--dry-run]
   ha-entities rename <entity_id> <new_entity_id> [--dry-run]
+  ha-entities refs <entity_id> [<entity_id> ...] [--device]
 
 All commands accept --format yaml|json (default: yaml).
 
@@ -21,6 +22,13 @@ which Home Assistant applies live; they never touch .storage files. Both
 print each changed field before and after and exit 1 if the read-back
 differs. `rename` lists every file that still references the old entity_id,
 since Home Assistant does not rewrite YAML.
+
+`refs` answers "what uses this entity?" from two sources: Home Assistant's
+own related-items search (the UI's Related tab: automations, scripts,
+scenes, groups, persons, including device triggers) and a text scan of the
+YAML config plus UI-made dashboards and helpers, which also catches
+templates. `--device` widens it to every entity of the device and to
+references by device_id.
 """
 
 import argparse
@@ -590,6 +598,116 @@ def find_references(entity_id, root=None):
     return refs
 
 
+# Related-item kinds that mean "this uses the entity"; the search also
+# returns upward relations (its device, area, integration) which do not
+USED_BY_KINDS = ("automation", "script", "scene", "group", "person")
+
+
+def used_by(item_type, item_id, names):
+    """Return {kind: [{entity_id, name}]} from HA's related-items search."""
+    related = (
+        ha_result(
+            {"type": "search/related", "item_type": item_type, "item_id": item_id}
+        )
+        or {}
+    )
+    result = {}
+    for kind in USED_BY_KINDS:
+        ids = sorted(related.get(kind) or [])
+        if ids:
+            result[kind + "s"] = [
+                {"entity_id": i, "name": names.get(i, i)} for i in ids
+            ]
+    return result
+
+
+def state_names():
+    return {
+        s["entity_id"]: s.get("attributes", {}).get("friendly_name", s["entity_id"])
+        for s in ha_result({"type": "get_states"}) or []
+    }
+
+
+def references_for(item_type, item_id, names):
+    """Combine HA's related search with the config text scan."""
+    refs = used_by(item_type, item_id, names)
+    files = find_references(item_id)
+    if files:
+        refs["files"] = files
+    return refs
+
+
+def count_refs(refs):
+    return sum(len(v) for v in refs.values())
+
+
+def cmd_refs(args):
+    names = state_names()
+    registry = {
+        e["entity_id"]: e
+        for e in ha_result({"type": "config/entity_registry/list"}) or []
+    }
+    output = {}
+
+    if args.device:
+        devices = {
+            d["id"]: d for d in ha_result({"type": "config/device_registry/list"}) or []
+        }
+        device_ids = []
+        for eid in args.entity_ids:
+            entry = registry.get(eid)
+            if entry is None:
+                get_registry_entry(eid)  # raises with the right explanation
+            if not entry.get("device_id"):
+                raise RuntimeError(f"'{eid}' does not belong to a device")
+            if entry["device_id"] not in device_ids:
+                device_ids.append(entry["device_id"])
+        output["devices"] = []
+        for device_id in device_ids:
+            device = devices.get(device_id, {})
+            entities = sorted(
+                e["entity_id"]
+                for e in registry.values()
+                if e.get("device_id") == device_id
+            )
+            device_refs = references_for("device", device_id, names)
+            output["devices"].append(
+                {
+                    "device_id": device_id,
+                    "name": device.get("name_by_user") or device.get("name"),
+                    "references": device_refs,
+                    "entities": {
+                        eid: references_for("entity", eid, names) for eid in entities
+                    },
+                }
+            )
+        total = sum(
+            count_refs(d["references"])
+            + sum(count_refs(r) for r in d["entities"].values())
+            for d in output["devices"]
+        )
+    else:
+        known = set(registry) | set(names)
+        for eid in args.entity_ids:
+            if eid not in known:
+                raise RuntimeError(
+                    f"entity '{eid}' not found (try `ha-entities list --search TEXT`)"
+                )
+        output["entities"] = {
+            eid: references_for("entity", eid, names) for eid in args.entity_ids
+        }
+        total = sum(count_refs(r) for r in output["entities"].values())
+
+    output["total_references"] = total
+    output["note"] = (
+        "automations/scripts/scenes/groups/persons come from Home Assistant's "
+        "related-items search; files is a text scan of the YAML config and of "
+        "UI-made dashboards and helpers under .storage, which also finds templates. "
+        "The same automation can appear in both."
+    )
+    print_output(output, args.format)
+
+
 def cmd_rename(args):
     old, new = args.entity_id, args.new_entity_id
     if not ENTITY_ID_RE.match(new):
@@ -612,6 +730,9 @@ def cmd_rename(args):
 
     refs = find_references(old)
     output = {"entity_id": old, "new_entity_id": new, "references": refs}
+    related = used_by("entity", old, state_names())
+    if related:
+        output["used_by"] = related
     storage_refs = [r for r in refs if r["file"].startswith(".storage")]
 
     if args.dry_run:
@@ -777,6 +898,21 @@ def main():
         help="Only list the references; do not rename",
     )
     p_rename.set_defaults(func=cmd_rename)
+
+    p_refs = sub.add_parser(
+        "refs",
+        parents=[fmt_parent],
+        help="Show what uses an entity: automations, scripts, scenes, "
+        "dashboards, templates",
+    )
+    p_refs.add_argument("entity_ids", nargs="+", metavar="entity_id")
+    p_refs.add_argument(
+        "--device",
+        action="store_true",
+        help="Cover every entity of the given entities' devices, and device_id "
+        "references (device triggers and actions)",
+    )
+    p_refs.set_defaults(func=cmd_refs)
 
     args = parser.parse_args()
 

@@ -541,13 +541,28 @@ integrations or changing logger/recorder/http settings.
 
 ### Built-in Skills
 
-Claude Code comes with the `HomeAssistantReload` skill pre-installed. You can
-invoke it with `/HomeAssistantReload` or Claude will automatically use it when
-you ask to apply configuration changes.
+Claude Code comes with these skills pre-installed. Claude picks the right one
+from what you ask; you can also invoke one directly, e.g.
+`/HomeAssistantReload`.
 
-The skill intelligently chooses between `ha-reload` (for YAML changes) and
-`ha core restart` (for new integrations), and guides you through validation
-before applying changes.
+- `HAEntities` — find entities, their states, areas, domains, scripts and
+  automations (`ha-entities`).
+- `EntityReferences` — what uses an entity or device: automations, scripts,
+  scenes, groups, dashboards and templates (`ha-entities refs`).
+- `UpdateEntity` — rename entities and devices, move them to an area, set
+  icons, hide or disable them, change entity_ids (`ha-entities update` /
+  `rename`), all through the registry API instead of `.storage`.
+- `CallService` — look up a service's real fields and call it (`ha-service`).
+- `SetState` — set helpers, counters, timers and vars with validation and
+  read-back (`ha-state`).
+- `TestTemplate` — render Jinja templates against live state (`ha-template`).
+- `QueryHistory` — answer "when / how long / how often" from recorded history
+  (`ha-history`).
+- `DebugAutomation` — find out why an automation did or didn't run, from its
+  traces (`ha-trace`).
+- `EditDashboard` — change dashboards, views and cards (`ha-dashboard`).
+- `HomeAssistantReload` — apply YAML changes, choosing between `ha-reload`
+  and `ha core restart` and validating first.
 
 ## Known issues and limitations
 

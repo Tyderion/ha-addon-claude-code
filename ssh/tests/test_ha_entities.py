@@ -40,8 +40,29 @@ ENTITIES = [
         "disabled_by": None,
     },
     {"entity_id": "light.lamp_2", "device_id": None, "name": "Other"},
+    {"entity_id": "sensor.lamp_power", "device_id": "dev1", "name": None},
 ]
+# What HA's search/related returns, including upward relations that refs
+# must drop (device, area, config_entry)
+RELATED = {
+    ("entity", "light.lamp"): {
+        "automation": ["automation.evening"],
+        "scene": ["scene.movie"],
+        "device": ["dev1"],
+        "area": ["kitchen"],
+        "config_entry": ["abc"],
+    },
+    ("device", "dev1"): {
+        "automation": ["automation.button_press"],
+        "entity": ["light.lamp", "sensor.lamp_power"],
+    },
+}
 STATES = [
+    {
+        "entity_id": "automation.evening",
+        "state": "on",
+        "attributes": {"friendly_name": "Evening lights"},
+    },
     {"entity_id": "light.lamp", "state": "on", "attributes": {}},
     {"entity_id": "light.lamp_2", "state": "off", "attributes": {}},
     {"entity_id": "sensor.yaml_only", "state": "1", "attributes": {}},
@@ -67,6 +88,10 @@ class FakeHA:
             return list(copy.deepcopy(self.devices).values())
         if kind == "config/entity_registry/list":
             return list(copy.deepcopy(self.entities).values())
+        if kind == "search/related":
+            return copy.deepcopy(
+                RELATED.get((command["item_type"], command["item_id"]), {})
+            )
         if kind == "config/entity_registry/get":
             if command["entity_id"] not in self.entities:
                 raise RuntimeError(
@@ -240,7 +265,9 @@ class UpdateTest(Base):
         self.assertFalse(out["verified"])
 
 
-class RenameTest(Base):
+class ConfigTree(Base):
+    """A throwaway /homeassistant with references in every kind of place."""
+
     def setUp(self):
         super().setUp()
         self.root = tempfile.mkdtemp()
@@ -252,6 +279,8 @@ class RenameTest(Base):
             ".storage/core.entity_registry": '{"entity_id": "light.lamp"}\n',
             "custom_components/foo/x.yaml": "light.lamp\n",
             "notes.txt": "light.lamp\n",
+            "scripts.yaml": "x:\n  sequence:\n    - device_id: dev1\n",
+            "template.yaml": "- sensor:\n    state: \"{{ states('sensor.lamp_power') }}\"\n",
         }
         for rel, body in files.items():
             path = os.path.join(self.root, rel)
@@ -262,6 +291,8 @@ class RenameTest(Base):
     def refs(self, out):
         return sorted((r["file"], r["line"]) for r in out["references"])
 
+
+class RenameTest(ConfigTree):
     def test_rename_and_references(self):
         code, out, _ = self.run_tool("rename", "light.lamp", "light.ceiling")
         self.assertEqual(code, 0)
@@ -271,6 +302,10 @@ class RenameTest(Base):
         )
         self.assertEqual(self.fake.updates[0]["new_entity_id"], "light.ceiling")
         self.assertIn("ha-dashboard", " ".join(out["notes"]))
+        self.assertEqual(
+            out["used_by"]["automations"],
+            [{"entity_id": "automation.evening", "name": "Evening lights"}],
+        )
 
     def test_dry_run(self):
         code, out, _ = self.run_tool(
@@ -294,6 +329,63 @@ class RenameTest(Base):
         code, _, err = self.run_tool("rename", "light.lamp", "light.Ceiling Lamp")
         self.assertEqual(code, 1)
         self.assertIn("not a valid entity_id", err)
+
+
+class RefsTest(ConfigTree):
+    def test_entity_refs_merge_search_and_files(self):
+        code, out, _ = self.run_tool("refs", "light.lamp")
+        self.assertEqual(code, 0)
+        refs = out["entities"]["light.lamp"]
+        self.assertEqual(set(refs), {"automations", "scenes", "files"})
+        self.assertEqual(
+            refs["scenes"], [{"entity_id": "scene.movie", "name": "scene.movie"}]
+        )
+        self.assertEqual(
+            sorted(f["file"] for f in refs["files"]),
+            [".storage/lovelace.main", "automations.yaml"],
+        )
+        self.assertEqual(out["total_references"], 4)
+
+    def test_unreferenced_yaml_only_entity(self):
+        # Not in the registry (no unique_id) but still searchable
+        code, out, _ = self.run_tool("refs", "sensor.yaml_only")
+        self.assertEqual(code, 0)
+        self.assertEqual(out["entities"]["sensor.yaml_only"], {})
+        self.assertEqual(out["total_references"], 0)
+
+    def test_word_boundary(self):
+        code, out, _ = self.run_tool("refs", "light.lamp_2")
+        self.assertEqual(
+            [f["file"] for f in out["entities"]["light.lamp_2"]["files"]],
+            ["packages/x.yaml"],
+        )
+
+    def test_unknown_entity(self):
+        code, _, err = self.run_tool("refs", "light.nope")
+        self.assertEqual(code, 1)
+        self.assertIn("not found", err)
+
+    def test_device_expands_to_all_entities_and_device_id(self):
+        code, out, _ = self.run_tool("refs", "light.lamp", "--device")
+        self.assertEqual(code, 0)
+        (device,) = out["devices"]
+        self.assertEqual(device["name"], "Hue Lamp")
+        self.assertEqual(
+            sorted(device["entities"]), ["light.lamp", "sensor.lamp_power"]
+        )
+        self.assertEqual(
+            device["references"]["automations"][0]["entity_id"],
+            "automation.button_press",
+        )
+        self.assertEqual(device["references"]["files"][0]["file"], "scripts.yaml")
+        self.assertEqual(
+            device["entities"]["sensor.lamp_power"]["files"][0]["file"], "template.yaml"
+        )
+
+    def test_device_refuses_entity_without_device(self):
+        code, _, err = self.run_tool("refs", "light.lamp_2", "--device")
+        self.assertEqual(code, 1)
+        self.assertIn("does not belong to a device", err)
 
 
 if __name__ == "__main__":

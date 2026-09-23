@@ -100,7 +100,8 @@ Returns `{count, scripts: [{entity_id, alias, state, mode, last_triggered}, …]
 Returns `{count, automations: [{entity_id, alias, state, mode, last_triggered}, …]}` sorted by alias alphabetically. State is `on` (enabled) or `off` (disabled).
 
 Changing names, areas, icons, visibility or entity_ids is the `update` and
-`rename` subcommands, covered by the UpdateEntity skill.
+`rename` subcommands, covered by the UpdateEntity skill. Finding what uses
+an entity or device is `refs`, covered by the EntityReferences skill.
 
 ## When to Use
 
