@@ -17,6 +17,11 @@
 #                 or /dev/null. Anything else asks: the user sees exactly what
 #                 would touch HA's state. Known write tools are hard-blocked
 #                 before this by guard-destructive.sh.
+#   ha-entities rename
+#                 changing an entity_id breaks every automation, script and
+#                 dashboard that still uses the old one, so it asks unless
+#                 that command segment is a --dry-run (which only lists the
+#                 references). A permission rule could not tell the two apart.
 #
 # A command that reaches a file without naming it (`grep -r password
 # /homeassistant`) is not caught; this closes the common paths, not every path.
@@ -50,8 +55,9 @@ ask() {
     exit 0
 }
 
-# True if a single command (no separators) cannot write anything
-read_only() {
+# Strips leading VAR=value assignments and wrapper commands (sudo, env, ...)
+# from a single command and prints its words, one per line
+command_words() {
     local -a words
     read -ra words <<< "$1"
     while ((${#words[@]})); do
@@ -63,6 +69,13 @@ read_only() {
                 ;;
         esac
     done
+    ((${#words[@]})) && printf '%s\n' "${words[@]}"
+}
+
+# True if a single command (no separators) cannot write anything
+read_only() {
+    local -a words
+    mapfile -t words < <(command_words "$1")
     ((${#words[@]})) || return 0
     [[ " ${READ_COMMANDS[*]} " == *" ${words[0]} "* ]] || return 1
     case ${words[0]} in
@@ -125,14 +138,23 @@ if [[ ${cmd} == *secrets.yaml* ]]; then
     ask "This shell command touches secrets.yaml, which holds your Home Assistant credentials."
 fi
 
+[[ ${cmd} == *.storage* || ${cmd} == *ha-entities* ]] || exit 0
+shopt -s extglob
+bare=$(strip_single_quotes "${cmd}") \
+    || ask "This shell command could not be parsed, and it touches .storage or the entity registry."
+# One command per line: split on ; & | newlines, $( ), backticks, ( )
+segments=$(printf '%s\n' "${bare}" | sed -E 's/\$\(|[;&|()`]/\n/g')
+
+while IFS= read -r segment; do
+    mapfile -t words < <(command_words "${segment}")
+    [[ ${words[0]-} == ha-entities && ${words[1]-} == rename ]] || continue
+    [[ " ${words[*]} " == *" --dry-run "* ]] \
+        || ask "Changing an entity_id breaks every automation, script and dashboard that still uses the old one."
+done <<< "${segments}"
+
 if [[ ${cmd} == *.storage* ]]; then
-    shopt -s extglob
-    bare=$(strip_single_quotes "${cmd}") \
-        || ask "This shell command touches Home Assistant's .storage directory and could not be parsed."
     redirects_safe "${bare}" \
         || ask "This shell command may write into Home Assistant's .storage directory (its internal state)."
-    # One command per line: split on ; & | newlines, $( ), backticks, ( )
-    segments=$(printf '%s\n' "${bare}" | sed -E 's/\$\(|[;&|()`]/\n/g')
     while IFS= read -r segment; do
         [[ -z ${segment//[[:space:]]/} ]] && continue
         read_only "${segment}" \

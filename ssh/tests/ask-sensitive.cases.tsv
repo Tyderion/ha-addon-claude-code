@@ -35,3 +35,12 @@ pass	jq -r '.data.entries[] | select(.domain == "hue") | .title' /homeassistant/
 pass	grep -c \'id\' /homeassistant/.storage/core.config_entries
 ask	echo \' ; rm /homeassistant/.storage/x ; echo \'
 ask	python3 /tmp/fix_registry.py /homeassistant/.storage/core.device_registry
+# ha-entities rename asks unless it is a dry run
+ask	ha-entities rename light.a light.b
+ask	ha-entities rename light.a light.b --format json
+ask	ha-entities rename light.a light.b --dry-run; ha-entities rename light.a light.b
+ask	echo '--dry-run' && ha-entities rename light.a light.b
+pass	ha-entities rename light.a light.b --dry-run
+pass	ha-entities rename --dry-run light.a light.b | head
+pass	ha-entities update light.a --name 'Kitchen Ceiling' --area Kitchen
+pass	ha-entities list --search rename

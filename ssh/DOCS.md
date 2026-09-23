@@ -446,7 +446,7 @@ never actually matched anything and only made the file look protective.
 
 ### Guardrails
 
-Three hooks ship with the app and are registered automatically in
+Four hooks ship with the app and are registered automatically in
 `/share/.claude/settings.json`:
 
 - **Destructive guard** — a `PreToolUse` hook that blocks a small set of
@@ -458,6 +458,11 @@ Three hooks ship with the app and are registered automatically in
   switched off. Merely consequential operations (restarts, reboots, backup
   restores) are deliberately _not_ here; those are things you legitimately
   ask for, so they sit in the `ask` list instead.
+- **Sensitive-operation prompts** — a `PreToolUse` hook that makes Claude
+  ask you first, in auto mode too, before a shell command that names
+  `secrets.yaml`, that could write into `.storage` (see above), or that
+  changes an entity_id with `ha-entities rename` (a `--dry-run`, which only
+  lists the references, runs without asking).
 - **Tool path rewriting** — Claude reaching for `./ha-entities`,
   `/usr/local/bin/ha-service` or `python3 ha-state.py` has the command
   rewritten to the bare PATH name before it runs. Without this, those forms

@@ -40,7 +40,9 @@ back to you as a tool error — fix it before reloading.
 A small set of operations is blocked by a hook rather than by the permission
 system, so no amount of retrying or re-asking will get them through: recursive
 deletes of a mapped directory, `mkfs`/`dd` onto a device, piping a download
-into a shell, and any shell write into `.storage`. If one of those comes back
+into a shell, and the common shell writes into `.storage`. Any other shell
+command that touches `.storage` beyond reading it, or names `secrets.yaml`,
+asks the user first. If one of those comes back
 blocked, take a different route — `ha-dashboard` for dashboards, the Home
 Assistant UI for the rest — and do not try to work around the guard.
 
@@ -60,6 +62,7 @@ The skills are the source of truth:
 | What happened in the past? How long / how often / when last? | `QueryHistory` |
 | Why didn't this automation fire, or what did it actually do? | `DebugAutomation` (traces, not YAML guesswork) |
 | Setting helper/virtual state (booleans, selects, numbers, timers, counters) | `SetState` (`ha-state`) — validated and verified; raw service calls on these domains are refused |
+| Renaming an entity or device, moving it to an area, icon, hide/disable, changing an entity_id | `UpdateEntity` (`ha-entities update` / `rename`) — **never** edit `.storage/core.entity_registry` or `core.device_registry` |
 | Anything touching dashboards, views, cards, badges | `EditDashboard` — **never** edit `.storage/lovelace.*` by hand |
 | Applying YAML changes | `HomeAssistantReload` (`ha-reload`) — prefers hot reload over restart |
 
@@ -150,6 +153,15 @@ ha-state set input_boolean.vacation_mode on
 Mutate helpers, counters, timers, and vars with `ha-state` (see the
 SetState skill). It validates the value, calls the right service, and
 verifies the result by reading the state back.
+
+### Rename or Move Entities
+```bash
+ha-entities update light.hue_lamp_1 --name "Kitchen Ceiling" --area Kitchen
+ha-entities rename light.hue_lamp_1 light.kitchen_ceiling --dry-run
+```
+Change names, areas, icons, visibility and entity_ids through the registry
+API (see the UpdateEntity skill). `rename` lists every file that still uses
+the old entity_id; update those afterwards, since Home Assistant does not.
 
 ### List Custom Components
 ```bash

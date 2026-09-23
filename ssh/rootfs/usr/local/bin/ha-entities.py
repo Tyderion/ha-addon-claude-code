@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ha-entities — Query Home Assistant entity states, areas, domains, scripts, and automations.
+"""ha-entities — Query and update Home Assistant entities, areas, domains, scripts, and automations.
 
 Usage:
   ha-entities list [--domain DOMAIN ...] [--area AREA] [--state STATE]
@@ -9,13 +9,24 @@ Usage:
   ha-entities areas
   ha-entities scripts
   ha-entities automations
+  ha-entities update <entity_id> [--device] [--name NAME | --reset-name]
+                     [--area AREA | --no-area] [--icon ICON | --reset-icon]
+                     [--hidden | --visible] [--disable | --enable] [--dry-run]
+  ha-entities rename <entity_id> <new_entity_id> [--dry-run]
 
 All commands accept --format yaml|json (default: yaml).
+
+`update` and `rename` go through the entity/device registry WebSocket API,
+which Home Assistant applies live; they never touch .storage files. Both
+print each changed field before and after and exit 1 if the read-back
+differs. `rename` lists every file that still references the old entity_id,
+since Home Assistant does not rewrite YAML.
 """
 
 import argparse
 import json
 import os
+import re
 import sys
 
 import yaml
@@ -370,6 +381,274 @@ def cmd_automations(args):
     print_output(output, args.format)
 
 
+# ── update / rename ──────────────────────────────────────────────────────────
+
+HA_CONFIG = "/homeassistant"
+ENTITY_ID_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
+# Directories under /homeassistant that never hold hand-written references
+SKIP_DIRS = {
+    ".git",
+    ".cloud",
+    "deps",
+    "tts",
+    "backups",
+    "custom_components",
+    "node_modules",
+    "__pycache__",
+}
+# .storage files worth scanning: UI-made dashboards and helpers (groups,
+# template sensors, ...) reference entity_ids there
+STORAGE_PREFIXES = ("lovelace", "core.config_entries")
+MAX_SCAN_BYTES = 5 * 1024 * 1024
+
+
+def get_registry_entry(entity_id):
+    """Return the entity registry entry, or exit with an explanation."""
+    try:
+        return ha_result({"type": "config/entity_registry/get", "entity_id": entity_id})
+    except RuntimeError as e:
+        if "not_found" not in str(e) and "not found" not in str(e).lower():
+            raise
+    states = ha_result({"type": "get_states"}) or []
+    if any(s["entity_id"] == entity_id for s in states):
+        raise RuntimeError(
+            f"'{entity_id}' has no unique_id, so it is not in the entity registry and "
+            "cannot be changed here. Change it where it is defined (its YAML, or "
+            "customize.yaml for friendly_name/icon)."
+        )
+    raise RuntimeError(
+        f"entity '{entity_id}' not found (try `ha-entities list --search TEXT`)"
+    )
+
+
+def resolve_area(area_reg, value):
+    """Map an area name or area_id (case-insensitive) to its area_id."""
+    wanted = value.strip().lower()
+    for a in area_reg:
+        if a["area_id"].lower() == wanted or a.get("name", "").lower() == wanted:
+            return a["area_id"]
+    names = ", ".join(sorted(a.get("name", a["area_id"]) for a in area_reg))
+    raise RuntimeError(
+        f"no area '{value}'. Existing areas: {names}. "
+        "Create new areas in Settings → Areas."
+    )
+
+
+def area_label(area_reg, area_id):
+    for a in area_reg:
+        if a["area_id"] == area_id:
+            return a.get("name", area_id)
+    return area_id
+
+
+def planned_changes(args, area_reg, device_mode):
+    """Return {registry_field: new_value} from the command-line flags."""
+    changes = {}
+    if args.name is not None or args.reset_name:
+        field = "name_by_user" if device_mode else "name"
+        changes[field] = None if args.reset_name else args.name
+    if args.area is not None or args.no_area:
+        changes["area_id"] = None if args.no_area else resolve_area(area_reg, args.area)
+    entity_only = {
+        "icon": args.icon is not None or args.reset_icon,
+        "hidden_by": args.hidden or args.visible,
+        "disabled_by": args.disable or args.enable,
+    }
+    if device_mode and any(entity_only.values()):
+        raise RuntimeError(
+            "--icon/--hidden/--visible/--disable/--enable apply to the entity; "
+            "drop --device for those"
+        )
+    if entity_only["icon"]:
+        changes["icon"] = None if args.reset_icon else args.icon
+    if entity_only["hidden_by"]:
+        changes["hidden_by"] = "user" if args.hidden else None
+    if entity_only["disabled_by"]:
+        changes["disabled_by"] = "user" if args.disable else None
+    if not changes:
+        raise RuntimeError("nothing to change: pass at least one of the update flags")
+    return changes
+
+
+def describe(field, value, area_reg):
+    if field == "area_id" and value:
+        return area_label(area_reg, value)
+    return value
+
+
+def cmd_update(args):
+    entry = get_registry_entry(args.entity_id)
+    area_reg = ha_result({"type": "config/area_registry/list"}) or []
+    device_mode = args.device
+
+    if device_mode:
+        if not entry.get("device_id"):
+            raise RuntimeError(f"'{args.entity_id}' does not belong to a device")
+        devices = ha_result({"type": "config/device_registry/list"}) or []
+        target = next((d for d in devices if d["id"] == entry["device_id"]), None)
+        if target is None:
+            raise RuntimeError(f"device {entry['device_id']} not found")
+        command = {"type": "config/device_registry/update", "device_id": target["id"]}
+    else:
+        target = entry
+        command = {"type": "config/entity_registry/update", "entity_id": args.entity_id}
+
+    wanted = planned_changes(args, area_reg, device_mode)
+    changes = {}
+    for field, value in wanted.items():
+        before = target.get(field)
+        if before == value:
+            continue
+        changes[field] = {
+            "before": describe(field, before, area_reg),
+            "after": describe(field, value, area_reg),
+        }
+
+    output = {
+        "entity_id": args.entity_id,
+        "target": "device" if device_mode else "entity",
+    }
+    if device_mode:
+        output["device"] = target.get("name_by_user") or target.get("name")
+    notes = []
+
+    if not changes:
+        output["changes"] = {}
+        output["note"] = "already set; nothing to do"
+        print_output(output, args.format)
+        return
+
+    if args.dry_run:
+        output["dry_run"] = True
+        output["changes"] = changes
+        print_output(output, args.format)
+        return
+
+    result = ha_result({**command, **{f: wanted[f] for f in changes}}) or {}
+    after_entry = result.get("entity_entry", result) if not device_mode else result
+    mismatched = [f for f in changes if after_entry.get(f) != wanted[f]]
+    output["changes"] = changes
+    output["verified"] = not mismatched
+
+    if "area_id" in changes:
+        if device_mode and entry.get("area_id"):
+            notes.append(
+                f"the entity keeps its own area "
+                f"'{area_label(area_reg, entry['area_id'])}'; run "
+                "`update --no-area` on it to inherit the device's area"
+            )
+        if not device_mode and wanted["area_id"] is None and entry.get("device_id"):
+            notes.append("the entity now inherits its device's area, if it has one")
+    if result.get("require_restart"):
+        notes.append("Home Assistant needs a restart for this to take effect")
+    elif result.get("reload_delay"):
+        notes.append(
+            f"the integration reloads in about {result['reload_delay']}s "
+            "to apply the enable/disable"
+        )
+    if mismatched:
+        notes.append(f"read-back differs for: {', '.join(mismatched)}")
+    if notes:
+        output["notes"] = notes
+
+    print_output(output, args.format)
+    if mismatched:
+        sys.exit(1)
+
+
+def find_references(entity_id, root=None):
+    """Return [{file, line, text}] for each line that names entity_id."""
+    root = root or HA_CONFIG
+    pattern = re.compile(r"(?<![\w.])" + re.escape(entity_id) + r"(?![\w])")
+    refs = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root)
+        in_storage = rel_dir.split(os.sep)[0] == ".storage"
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        for filename in sorted(filenames):
+            if in_storage:
+                if not filename.startswith(STORAGE_PREFIXES):
+                    continue
+            elif not filename.endswith((".yaml", ".yml")):
+                continue
+            path = os.path.join(dirpath, filename)
+            try:
+                if os.path.getsize(path) > MAX_SCAN_BYTES:
+                    continue
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    for lineno, line in enumerate(f, 1):
+                        if pattern.search(line):
+                            refs.append(
+                                {
+                                    "file": os.path.relpath(path, root),
+                                    "line": lineno,
+                                    "text": line.strip()[:160],
+                                }
+                            )
+            except OSError:
+                continue
+    return refs
+
+
+def cmd_rename(args):
+    old, new = args.entity_id, args.new_entity_id
+    if not ENTITY_ID_RE.match(new):
+        raise RuntimeError(
+            f"'{new}' is not a valid entity_id (lowercase domain.object_id, "
+            "letters, digits and underscores)"
+        )
+    if new.split(".")[0] != old.split(".")[0]:
+        raise RuntimeError("the domain cannot change; keep the part before the dot")
+    if new == old:
+        raise RuntimeError("new entity_id is the same as the old one")
+
+    get_registry_entry(old)
+    taken = {
+        e["entity_id"] for e in ha_result({"type": "config/entity_registry/list"}) or []
+    }
+    taken |= {s["entity_id"] for s in ha_result({"type": "get_states"}) or []}
+    if new in taken:
+        raise RuntimeError(f"'{new}' already exists")
+
+    refs = find_references(old)
+    output = {"entity_id": old, "new_entity_id": new, "references": refs}
+    storage_refs = [r for r in refs if r["file"].startswith(".storage")]
+
+    if args.dry_run:
+        output["dry_run"] = True
+        print_output(output, args.format)
+        return
+
+    result = (
+        ha_result(
+            {
+                "type": "config/entity_registry/update",
+                "entity_id": old,
+                "new_entity_id": new,
+            }
+        )
+        or {}
+    )
+    after = result.get("entity_entry", result)
+    output["verified"] = after.get("entity_id") == new
+    notes = []
+    if refs:
+        notes.append(
+            f"{len(refs)} reference(s) still use '{old}'; Home Assistant does not "
+            "rewrite YAML. Update the YAML files, then run ha-reload."
+        )
+    if storage_refs:
+        notes.append(
+            "references under .storage come from UI-made dashboards or helpers: "
+            "fix dashboards with ha-dashboard and helpers in the UI, never by hand"
+        )
+    if notes:
+        output["notes"] = notes
+    print_output(output, args.format)
+    if not output["verified"]:
+        sys.exit(1)
+
+
 def main():
     fmt_parent = argparse.ArgumentParser(add_help=False)
     fmt_parent.add_argument(
@@ -445,6 +724,59 @@ def main():
         help="List all automations with their aliases",
     )
     p_automations.set_defaults(func=cmd_automations)
+
+    p_update = sub.add_parser(
+        "update",
+        parents=[fmt_parent],
+        help="Change an entity's (or its device's) name, area, icon, visibility",
+    )
+    p_update.add_argument("entity_id")
+    p_update.add_argument(
+        "--device",
+        action="store_true",
+        help="Apply --name/--area to the entity's device instead of the entity",
+    )
+    name = p_update.add_mutually_exclusive_group()
+    name.add_argument("--name", help="Set the display name")
+    name.add_argument(
+        "--reset-name",
+        action="store_true",
+        help="Drop the custom name and use the integration's own",
+    )
+    area = p_update.add_mutually_exclusive_group()
+    area.add_argument("--area", help="Area name or area_id")
+    area.add_argument(
+        "--no-area",
+        action="store_true",
+        help="Clear the area (an entity then inherits its device's area)",
+    )
+    icon = p_update.add_mutually_exclusive_group()
+    icon.add_argument("--icon", help="Icon, e.g. mdi:lamp")
+    icon.add_argument("--reset-icon", action="store_true", help="Drop a custom icon")
+    hidden = p_update.add_mutually_exclusive_group()
+    hidden.add_argument("--hidden", action="store_true", help="Hide the entity")
+    hidden.add_argument("--visible", action="store_true", help="Unhide the entity")
+    disabled = p_update.add_mutually_exclusive_group()
+    disabled.add_argument("--disable", action="store_true", help="Disable the entity")
+    disabled.add_argument("--enable", action="store_true", help="Enable the entity")
+    p_update.add_argument(
+        "--dry-run", action="store_true", help="Show the changes without applying"
+    )
+    p_update.set_defaults(func=cmd_update)
+
+    p_rename = sub.add_parser(
+        "rename",
+        parents=[fmt_parent],
+        help="Change an entity_id and list the references that still use the old one",
+    )
+    p_rename.add_argument("entity_id")
+    p_rename.add_argument("new_entity_id")
+    p_rename.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only list the references; do not rename",
+    )
+    p_rename.set_defaults(func=cmd_rename)
 
     args = parser.parse_args()
 

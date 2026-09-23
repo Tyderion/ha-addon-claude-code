@@ -43,3 +43,5 @@ jobs:
         run: bash ssh/tests/ask-sensitive.test.sh
       - name: 🚀 Run claude wrapper tests
         run: bash ssh/tests/claude-wrapper.test.sh
+      - name: 🚀 Run Python tool tests
+        run: python3 ssh/tests/test_ha_entities.py
