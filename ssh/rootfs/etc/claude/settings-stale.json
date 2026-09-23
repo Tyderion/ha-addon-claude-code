@@ -1,5 +1,5 @@
 {
-  "_comment": "Permission rules that shipped as add-on defaults in earlier versions and have since been replaced. The additive merge in init-user/run can never drop an entry on its own, so these are pruned from the persistent settings.json by exact string match on every start. Everything here used the undocumented `Bash(cmd *)` space-glob form, which does not match the way `Bash(cmd:*)` does, so the rules were dead weight that still made the file look protective.",
+  "_comment": "Permission rules that shipped as add-on defaults in earlier versions and have since been replaced. The additive merge in init-user/run can never drop an entry on its own, so these are pruned from the persistent settings.json by exact string match on every start. The Bash entries used the undocumented `Bash(cmd *)` space-glob form, which does not match the way `Bash(cmd:*)` does. The Read/Edit/Write entries used a single leading slash, which in user settings anchors at ~/.claude rather than the filesystem root, so `Edit(/homeassistant/**)` matched /root/.claude/homeassistant; they are replaced by `//` absolute forms. Write rules are dropped outright: Claude Code only matches Edit rules for file permission checks, and Edit covers all file-editing tools.",
   "allow": [
     "Bash(ha *)",
     "Bash(yamllint *)",
@@ -16,7 +16,20 @@
     "Bash(ha-template *)",
     "Bash(ha-service *)",
     "Bash(ha-state *)",
-    "Bash(bluetoothctl *)"
+    "Bash(bluetoothctl *)",
+    "Read(/homeassistant/**)",
+    "Edit(/homeassistant/**)",
+    "Write(/homeassistant/**)",
+    "Read(/addon_configs/**)",
+    "Edit(/addon_configs/**)",
+    "Write(/addon_configs/**)",
+    "Read(/addons/**)",
+    "Read(/backup/**)",
+    "Read(/media/**)",
+    "Read(/share/**)",
+    "Edit(/share/**)",
+    "Write(/share/**)",
+    "Read(/ssl/**)"
   ],
   "ask": [
     "Bash(*--unsafe*)",
@@ -32,7 +45,10 @@
     "Bash(ha os update*)",
     "Bash(ha supervisor update*)",
     "Bash(curl -s -X POST http://supervisor/*)",
-    "Bash(curl -X POST http://supervisor/*)"
+    "Bash(curl -X POST http://supervisor/*)",
+    "Read(/homeassistant/secrets.yaml)",
+    "Edit(/homeassistant/secrets.yaml)",
+    "Write(/homeassistant/secrets.yaml)"
   ],
   "deny": [
     "Bash(./ha-entities*)",
@@ -42,6 +58,8 @@
     "Bash(./ha-template*)",
     "Bash(./ha-service*)",
     "Bash(./ha-state*)",
-    "Bash(./ha-reload*)"
+    "Bash(./ha-reload*)",
+    "Edit(/homeassistant/.storage/**)",
+    "Write(/homeassistant/.storage/**)"
   ]
 }
