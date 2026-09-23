@@ -102,5 +102,5 @@ cd /homeassistant || true
 # Auto-start Claude Code (only in interactive, non-nested shells)
 if [[ -o interactive ]] && [[ -z "$CLAUDE_RUNNING" ]]; then
   export CLAUDE_RUNNING=1
-  claude
+  claude-autostart
 fi

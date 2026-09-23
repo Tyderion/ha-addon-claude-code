@@ -4,7 +4,8 @@
 # Home Assistant Community App: Advanced SSH & Web Terminal
 # Runs the ttyd daemon
 # ==============================================================================
-declare ttyd_command
+declare shell
+declare -a ttyd_command
 declare -a options
 declare ingress_port
 
@@ -27,16 +28,27 @@ options+=(--writable)
 ingress_port=$(bashio::addon.ingress_port)
 options+=(-p "${ingress_port}")
 
-ttyd_command=(tmux -u new -A -s homeassistant zsh -l)
+shell=zsh
 if ! bashio::config.true "zsh"; then
-    ttyd_command=(tmux -u new -A -s homeassistant bash -l)
+    shell=bash
 fi
+ttyd_command=(tmux -u new -A -s homeassistant "${shell}" -l)
 
 # Change working directory
 cd /root || bashio::exit.nok 'Unable to change working directory'
 
 # Set environment so that we know if we're running under ttyd
 export TTYD=1
+
+# Start the terminal session up front, so Claude Code (and Remote Control)
+# run without a browser attached; ttyd's `tmux new -A` then attaches to it.
+# The has-session guard covers s6 restarting this service.
+if bashio::config.true 'claude_autostart_session' \
+    && ! tmux has-session -t homeassistant 2> /dev/null; then
+    bashio::log.info 'Starting the terminal session at boot...'
+    TERM="${TERM:-xterm-256color}" tmux -u new -d -s homeassistant "${shell}" -l \
+        || bashio::log.warning 'Failed to start the terminal session at boot'
+fi
 
 # Run the ttyd daemon
 exec ttyd "${options[@]}" "${ttyd_command[@]}"

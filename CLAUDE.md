@@ -13,8 +13,9 @@ an add-on repository (`repository.yaml`) containing one add-on in `ssh/`.
 - `ssh/rootfs/` — files copied verbatim into the container image:
   - `etc/s6-overlay/s6-rc.d/<service>/` — s6 services (`init-*` oneshots, `sshd`/`ttyd` longruns; dependencies via `dependencies.d/`, registered in `user/contents.d/`)
   - `etc/claude/` — Claude Code setup shipped to users: `settings.json` (permission rules, `autoMode` container description, hook registrations), `settings-stale.json` (old default rules pruned from users' persistent settings on start), `CLAUDE.md.template` (installed into `/homeassistant`), `statusline.sh`, `hooks/*`, `skills/*/SKILL.md`
+  - `usr/local/bin/claude` — wrapper around the Claude binary (`/root/.local/bin/claude`, versions persisted in `/data/claude-versions`) that pins the session name; `claude-autostart` is what the shell rc files launch. Both read `/etc/claude/addon.env`, which `init-user/run` writes from the `claude_*` options
   - `usr/local/bin/` — CLI tools: `ha-entities.py`, `ha-dashboard.py`, `ha-reload`, shared WebSocket lib `ha_lib.py`
-- `ssh/tests/` — table tests for the shipped hooks (`*.cases.tsv` + `*.test.sh`); not copied into the image
+- `ssh/tests/` — table tests for the shipped hooks and the `claude` wrapper (`*.cases.tsv` + `*.test.sh`); not copied into the image
 - `.github/workflows/ci.yaml` — CI via shared `hassio-addons/workflows` (hadolint, shellcheck, yamllint, markdownlint per `.yamllint`/`.mdlrc`), plus format checks and hook tests
 
 ## Conventions

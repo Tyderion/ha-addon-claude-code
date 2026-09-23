@@ -1,0 +1,25 @@
+# name<TAB>args (shell words)<TAB>expected argv reaching the binary ([a][b]...)
+# `-` in the name column means the option is unset, `()` means no args or no
+# output, and `(help text)` means the binary's own --help output.
+-	()	()
+-	--resume abc	[--resume][abc]
+-	mcp list	[mcp][list]
+Home Assistant	()	[--name][Home Assistant]
+Home Assistant	--resume abc	[--name][Home Assistant][--resume][abc]
+Home Assistant	--continue	[--name][Home Assistant][--continue]
+Home Assistant	-p 'list my lights'	[--name][Home Assistant][-p][list my lights]
+Home Assistant	'fix the mcp config'	[--name][Home Assistant][fix the mcp config]
+Home Assistant	mcp list	[mcp][list]
+Home Assistant	update	[update]
+Home Assistant	doctor	[doctor]
+Home Assistant	plugins list	[plugins][list]
+Home Assistant	plugin install x	[plugin][install][x]
+Home Assistant	-n Other	[-n][Other]
+Home Assistant	-nOther	[-nOther]
+Home Assistant	--name Other	[--name][Other]
+Home Assistant	--name=Other	[--name=Other]
+Home Assistant	--resume abc --name Other	[--resume][abc][--name][Other]
+Home Assistant	-- -n	[--name][Home Assistant][--][-n]
+Home Assistant	--help	(help text)
+Home Assistant	--version	[--version]
+Tom's "HA"	()	[--name][Tom's "HA"]

@@ -32,10 +32,12 @@ jobs:
         run: pixi run fmt-check
 
   test:
-    name: Hook tests
+    name: Hook and wrapper tests
     runs-on: ubuntu-latest
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: 🚀 Run hook tests
         run: bash ssh/tests/guard-destructive.test.sh
+      - name: 🚀 Run claude wrapper tests
+        run: bash ssh/tests/claude-wrapper.test.sh

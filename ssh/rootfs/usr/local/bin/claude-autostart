@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant Community App: SSH & Claude Code Terminal
+# Starts the Claude Code session that the shell rc files auto-launch
+#
+# With the `claude_continue_session` option on, the first auto-start in the
+# web terminal's tmux session (opened by ttyd, or at boot) continues the most
+# recent conversation in the working directory. Everything else starts fresh:
+# SSH logins, further tmux windows, and a manual `claude`, so two Claude
+# processes never end up on the same conversation.
+# ==============================================================================
+readonly ADDON_ENV="${CLAUDE_ADDON_ENV:-/etc/claude/addon.env}"
+readonly PROJECTS_DIR=/root/.claude/projects
+readonly CONTINUED_MARKER=CLAUDE_AUTOSTART_CONTINUED
+
+CLAUDE_CONTINUE_SESSION=false
+if [[ -r ${ADDON_ENV} ]]; then
+    # shellcheck source=/dev/null
+    source "${ADDON_ENV}"
+fi
+
+# Claude names a project's transcript directory after its path, with every
+# character other than a letter or digit replaced by a dash
+has_transcript() {
+    compgen -G "${PROJECTS_DIR}/${PWD//[^a-zA-Z0-9]/-}/*.jsonl" > /dev/null
+}
+
+# Claims the one continue per tmux session; false if it is already taken
+claim_continue() {
+    tmux show-environment "${CONTINUED_MARKER}" > /dev/null 2>&1 && return 1
+    tmux set-environment "${CONTINUED_MARKER}" 1
+}
+
+if [[ ${CLAUDE_CONTINUE_SESSION} == true ]] \
+    && [[ -n ${TTYD-} ]] \
+    && [[ -n ${TMUX-} ]] \
+    && has_transcript \
+    && claim_continue; then
+    exec claude --continue
+fi
+
+exec claude

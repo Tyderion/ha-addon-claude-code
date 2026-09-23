@@ -1,0 +1,80 @@
+---
+configuration:
+  log_level:
+    name: Log level
+    description: How verbose the app log is. `info` is recommended.
+  ssh:
+    name: SSH
+    description: Settings for the SSH daemon.
+    fields:
+      username:
+        name: Username
+        description: >-
+          Username for SSH authentication. You are always root once logged in.
+          Must be `root` for SFTP and rsync.
+      password:
+        name: Password
+        description: >-
+          Password for SSH login. Leave empty to disable password
+          authentication; public keys are recommended.
+      authorized_keys:
+        name: Authorized keys
+        description: Public keys allowed to log in.
+      sftp:
+        name: SFTP
+        description: Enable SFTP. Requires the username `root`.
+      compatibility_mode:
+        name: Compatibility mode
+        description: >-
+          Allow older, less secure ciphers for legacy clients. Lowers
+          security.
+      allow_agent_forwarding:
+        name: Allow agent forwarding
+        description: Permit ssh-agent forwarding.
+      allow_remote_port_forwarding:
+        name: Allow remote port forwarding
+        description: Allow remote hosts to connect to forwarded ports.
+      allow_tcp_forwarding:
+        name: Allow TCP forwarding
+        description: Permit TCP forwarding.
+  zsh:
+    name: Use ZSH
+    description: Use ZSH as the shell. Turn off to use Bash instead.
+  share_sessions:
+    name: Share sessions
+    description: >-
+      Share one terminal session between the web terminal and SSH logins.
+  packages:
+    name: Extra packages
+    description: Alpine packages to install on every start.
+  init_commands:
+    name: Init commands
+    description: Shell commands to run as root on every start.
+  claude_md:
+    name: CLAUDE.md
+    description: >-
+      Lines written to /homeassistant/CLAUDE.md on every start. Leave empty to
+      manage the file yourself.
+  claude_permission_mode:
+    name: Claude permission mode
+    description: >-
+      How much Claude Code asks before it acts. `auto` approves routine Home
+      Assistant work by itself.
+  claude_session_name:
+    name: Claude session name
+    description: >-
+      Fixed display name for every Claude Code session (prompt box, /resume
+      picker, Claude app). Leave empty for automatically derived names.
+  claude_continue_session:
+    name: Continue last conversation
+    description: >-
+      The Claude Code session that starts in the web terminal continues the
+      most recent conversation instead of starting fresh.
+  claude_autostart_session:
+    name: Start Claude at boot
+    description: >-
+      Start the terminal session and Claude Code when the app starts, so
+      Remote Control and the Claude app work without opening the web
+      terminal. Uses memory even when idle.
+network:
+  22/tcp: SSH server port (make empty to disable)

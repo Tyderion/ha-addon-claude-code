@@ -1,0 +1,5 @@
+# shellcheck shell=bash
+# Login shells read this only when ~/.bash_profile is absent, which is the case
+# with session sharing disabled (init-user removes it).
+# shellcheck source=/dev/null
+[[ -f ~/.bashrc ]] && . ~/.bashrc

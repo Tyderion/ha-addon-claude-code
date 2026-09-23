@@ -51,6 +51,7 @@ map:
   - ssl:rw
 backup_exclude:
   - "*/.vscode-server/**"
+  - "*/claude-versions/**"
 journald: true
 options:
   ssh:
@@ -68,6 +69,9 @@ options:
   init_commands: []
   claude_md: []
   claude_permission_mode: auto
+  claude_session_name: ""
+  claude_continue_session: false
+  claude_autostart_session: false
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)?
   ssh:
@@ -89,3 +93,6 @@ schema:
   claude_md:
     - str
   claude_permission_mode: list(default|acceptEdits|auto|bypassPermissions)?
+  claude_session_name: str?
+  claude_continue_session: bool
+  claude_autostart_session: bool

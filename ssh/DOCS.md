@@ -103,6 +103,9 @@ init_commands:
   - ls -la
 claude_md: []
 claude_permission_mode: auto
+claude_session_name: Home Assistant
+claude_continue_session: true
+claude_autostart_session: true
 ```
 
 **Note**: _This is just an example, don't copy and paste it! Create your own!_
@@ -286,6 +289,68 @@ so it is the one place to change the behaviour.
 ```yaml
 claude_permission_mode: auto
 ```
+
+#### Option: `claude_session_name`
+
+Gives every Claude Code session a fixed display name, shown in the prompt
+box, the `/resume` picker, the terminal title and the Claude app. Claude never
+renames a session named this way. Leave it empty to keep the automatically
+derived names (`homeassistant-<n>`).
+
+The name is applied to interactive and `-p` sessions alike, including
+`claude --resume` and `claude --continue`. Subcommands such as `claude mcp`,
+`claude update` and `claude doctor` are left alone, and an explicit
+`claude -n "Something else"` always wins.
+
+If two sessions run at the same time with the same name, Claude appends a
+number to the later one, e.g. `Home Assistant (2)`. That happens when you keep
+the web terminal open and log in over SSH with `share_sessions` disabled.
+
+```yaml
+claude_session_name: Home Assistant
+```
+
+#### Option: `claude_continue_session`
+
+When set to `true`, the Claude Code session that starts automatically in the
+web terminal continues the most recent conversation in `/homeassistant`
+instead of starting a new one. If there is no previous conversation yet, it
+starts fresh.
+
+Only the first automatic start in the web terminal continues. SSH logins
+(with `share_sessions` disabled), additional tmux windows and a `claude` you
+type yourself always start a new conversation, so two Claude processes never
+work on the same conversation. Defaults to `false`.
+
+#### Option: `claude_autostart_session`
+
+When set to `true`, the terminal session, and with it Claude Code, starts as
+soon as the app starts rather than when you first open the web terminal. This
+makes [Remote Control][claude-remote-control] and the Claude app reach your
+session right after a restart without opening Home Assistant. Opening the web
+terminal attaches to the running session.
+
+Claude Code holds a few hundred MB of memory while it runs, which matters on
+small hardware, so this defaults to `false`. If you exit Claude and then the
+shell, the session ends and starts again the next time you open the web
+terminal.
+
+### Claude Code updates
+
+Claude Code updates itself in the background. The app keeps the downloaded
+versions in `/data/claude-versions`, so an update survives restarts instead
+of rolling back to the version bundled with the app. When an app update ships
+a newer Claude Code than the one you have, that one is used instead. The
+directory is excluded from backups, since it can always be rebuilt.
+
+### Migrating from `init_commands` workarounds
+
+Earlier versions needed `init_commands` entries to keep Claude Code updates,
+pin the session name, continue the last conversation, or start the session
+at boot. Remove those entries and use the options above instead. On the first
+start after updating, the app moves an existing `/share/.claude-versions`
+directory to `/data/claude-versions`; if the old entry recreates it, the log
+warns you until the entry is removed.
 
 ## Using Claude Code
 
@@ -517,6 +582,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 [alpine-packages]: https://pkgs.alpinelinux.org/packages
+[claude-remote-control]: https://code.claude.com/docs/en/remote-control
 [claude-code]: https://claude.ai/code
 [contributors]: https://github.com/hassio-addons/app-ssh/graphs/contributors
 [discord-ha]: https://discord.gg/c5DvZ4e

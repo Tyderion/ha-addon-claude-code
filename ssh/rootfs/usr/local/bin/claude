@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant Community App: SSH & Claude Code Terminal
+# Wraps the Claude Code binary to pin the session display name
+#
+# When the `claude_session_name` option is set, every session gets
+# `--name <name>`, which Claude records with nameSource "user" and therefore
+# never re-derives. Subcommands (`claude mcp`, `claude update`, ...) and calls
+# that already name the session are passed through untouched.
+#
+# The subcommand list is read from the binary's own `--help` and cached per
+# resolved version, because Claude auto-updates inside the container.
+# ==============================================================================
+readonly CLAUDE_BIN="${CLAUDE_ADDON_BIN:-/root/.local/bin/claude}"
+readonly ADDON_ENV="${CLAUDE_ADDON_ENV:-/etc/claude/addon.env}"
+readonly CACHE_DIR="${CLAUDE_ADDON_CACHE:-/tmp/claude-addon}"
+# Used only when `--help` cannot be parsed (Claude Code 2.1.276)
+readonly -a FALLBACK_SUBCOMMANDS=(
+    agents attach auth auto-mode doctor gateway help import install kill logs
+    mcp plugin plugins project respawn rm setup-token stop ultrareview update
+    upgrade
+)
+
+CLAUDE_SESSION_NAME=""
+if [[ -r ${ADDON_ENV} ]]; then
+    # shellcheck source=/dev/null
+    source "${ADDON_ENV}"
+fi
+
+passthrough() {
+    exec "${CLAUDE_BIN}" "$@"
+}
+
+# Prints one subcommand name per line, aliases (`plugin|plugins`) split up
+subcommands() {
+    local resolved cache
+    resolved=$(readlink -f "${CLAUDE_BIN}") || return 1
+    cache="${CACHE_DIR}/subcommands${resolved//\//_}"
+    if [[ ! -s ${cache} ]]; then
+        mkdir -p "${CACHE_DIR}" || return 1
+        "${CLAUDE_BIN}" --help 2> /dev/null | awk '
+            /^Commands:/ { in_commands = 1; next }
+            in_commands && /^[^ ]/ { exit }
+            in_commands && /^  [a-z]/ {
+                n = split($1, names, "|")
+                for (i = 1; i <= n; i++) print names[i]
+            }
+        ' > "${cache}.$$"
+        if [[ -s "${cache}.$$" ]]; then
+            mv "${cache}.$$" "${cache}"
+        else
+            rm -f "${cache}.$$"
+            return 1
+        fi
+    fi
+    cat "${cache}"
+}
+
+is_subcommand() {
+    local list
+    list=$(subcommands) || list=$(printf '%s\n' "${FALLBACK_SUBCOMMANDS[@]}")
+    grep -Fxq -- "$1" <<< "${list}"
+}
+
+[[ -z ${CLAUDE_SESSION_NAME} ]] && passthrough "$@"
+
+# An explicitly named session always wins
+for arg in "$@"; do
+    case ${arg} in
+        --) break ;;
+        -n | -n?* | --name | --name=*) passthrough "$@" ;;
+    esac
+done
+
+case ${1-} in
+    -h | --help | -v | --version) passthrough "$@" ;;
+    -* | '') ;;
+    *) is_subcommand "$1" && passthrough "$@" ;;
+esac
+
+exec "${CLAUDE_BIN}" --name "${CLAUDE_SESSION_NAME}" "$@"

@@ -96,7 +96,6 @@ RUN \
     && pip3 install -r /tmp/requirements.txt \
     \
     && curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_VERSION}" \
-    && ln -sf /root/.local/bin/claude /usr/local/bin/claude \
     # Drop installer runtime state; init-user symlinks these to /share
     && rm -rf /root/.claude /root/.claude.json \
     \
