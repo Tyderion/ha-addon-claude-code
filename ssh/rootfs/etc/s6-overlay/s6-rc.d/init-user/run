@@ -19,6 +19,29 @@ readonly CLAUDE_JSON=/root/.claude.json
 readonly CLAUDE_PERSISTENT_PATH=/share/.claude
 readonly CLAUDE_PERSISTENT_JSON=/share/.claude.json
 readonly CLAUDE_DEFAULT_SETTINGS=/etc/claude/settings.json
+readonly CLAUDE_STALE_SETTINGS=/etc/claude/settings-stale.json
+readonly CLAUDE_ADDON_ENV=/etc/claude/addon.env
+readonly CLAUDE_BIN=/root/.local/bin/claude
+readonly CLAUDE_VERSIONS=/root/.local/share/claude/versions
+readonly CLAUDE_PERSISTENT_VERSIONS=/data/claude-versions
+readonly CLAUDE_LEGACY_VERSIONS=/share/.claude-versions
+
+# Prints the newest Claude Code version in a versions directory. Only names
+# that look like a version count, so an interrupted download or a copy in
+# progress is never picked.
+latest_claude_version() {
+    local entry
+    for entry in "$1"/*; do
+        [[ -f ${entry} ]] && echo "${entry##*/}"
+    done | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -n 1
+}
+
+# True if version $1 sorts strictly after version $2 (or $2 is empty)
+claude_version_newer() {
+    [[ -z $2 ]] && return 0
+    [[ $1 != "$2" ]] \
+        && [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" == "$1" ]]
+}
 
 # Links some common directories to the user's home folder for convenience
 for dir in "${DIRECTORIES[@]}"; do
@@ -109,22 +132,66 @@ if ! bashio::fs.directory_exists "${CLAUDE_PERSISTENT_PATH}"; then
     fi
 fi
 
-# Merge new default permissions into existing settings on every start
+# Merge new defaults into existing settings on every start.
+#
+#   permissions.{allow,ask,deny}  additive; user entries are never dropped,
+#                                 except for rules listed in settings-stale.json
+#                                 (defaults we shipped and have since replaced)
+#   permissions.defaultMode       from the `claude_permission_mode` option, which
+#                                 is the user's control surface for it
+#   env                           defaults fill in, user wins
+#   remoteControlAtStartup        from the `claude_remote_control` option, so
+#                                 Remote Control connects without `/rc`
+#   skipAutoPermissionPrompt      default fills in, user wins
+#   statusLine, hooks, autoMode   app-managed; they describe what the image
+#                                 ships, so the defaults overwrite them
 if bashio::fs.file_exists "${CLAUDE_DEFAULT_SETTINGS}" \
     && bashio::fs.file_exists "${CLAUDE_PERSISTENT_PATH}/settings.json"; then
-    merged=$(jq -s '
-        .[0] as $current | .[1] as $defaults |
-        $current * {
+    permission_mode=$(bashio::config 'claude_permission_mode' 'auto')
+    case "${permission_mode}" in
+        default | acceptEdits | auto | bypassPermissions) ;;
+        *)
+            bashio::log.warning \
+                "Unknown claude_permission_mode '${permission_mode}', falling back to 'auto'"
+            permission_mode=auto
+            ;;
+    esac
+
+    remote_control=false
+    bashio::config.true 'claude_remote_control' && remote_control=true
+
+    stale="${CLAUDE_STALE_SETTINGS}"
+    bashio::fs.file_exists "${stale}" || stale=/dev/null
+
+    merged=$(jq -s --arg mode "${permission_mode}" --argjson rc "${remote_control}" '
+        .[0] as $current | .[1] as $defaults | (.[2] // {}) as $stale |
+        ($defaults | {statusLine, hooks, autoMode} | with_entries(select(.value != null))) as $managed |
+        ($defaults | {skipAutoPermissionPrompt} | with_entries(select(.value != null))) as $fill |
+        def keep($key): (($current.permissions[$key] // []) - ($stale[$key] // []))
+            + ($defaults.permissions[$key] // []) | unique;
+        $fill * $current * $managed * {
+            remoteControlAtStartup: $rc,
+            env: (($defaults.env // {}) * ($current.env // {})),
             permissions: {
-                allow: (($current.permissions.allow // []) + ($defaults.permissions.allow // []) | unique),
-                deny: (($current.permissions.deny // []) + ($defaults.permissions.deny // []) | unique)
+                allow: keep("allow"),
+                ask: keep("ask"),
+                deny: keep("deny"),
+                defaultMode: (
+                    if $mode == "" then
+                        ($current.permissions.defaultMode // $defaults.permissions.defaultMode)
+                    else $mode end
+                )
             }
         }
-    ' "${CLAUDE_PERSISTENT_PATH}/settings.json" "${CLAUDE_DEFAULT_SETTINGS}" 2>/dev/null) \
+    ' "${CLAUDE_PERSISTENT_PATH}/settings.json" "${CLAUDE_DEFAULT_SETTINGS}" "${stale}" 2> /dev/null) \
         && echo "${merged}" > "${CLAUDE_PERSISTENT_PATH}/settings.json" \
+        && bashio::log.info "Claude Code permission mode: ${permission_mode}, Remote Control at startup: ${remote_control}" \
         || bashio::log.warning 'Failed to merge default Claude settings'
 fi
 
+# The Claude installer leaves runtime state in the image; remove it so the
+# persistence symlinks can be created (rm on a symlink removes only the link)
+rm -rf "${CLAUDE_PATH}" "${CLAUDE_JSON}"
 ln -s "${CLAUDE_PERSISTENT_PATH}" "${CLAUDE_PATH}"
 
 # Persist .claude.json (stores onboarding state, theme, etc.)
@@ -132,6 +199,71 @@ if ! bashio::fs.file_exists "${CLAUDE_PERSISTENT_JSON}"; then
     echo '{}' > "${CLAUDE_PERSISTENT_JSON}"
 fi
 ln -s "${CLAUDE_PERSISTENT_JSON}" "${CLAUDE_JSON}"
+
+# Keeps Claude Code's auto-updates across restarts. The native installer puts
+# the binaries under /root/.local, which is image state: without this, every
+# start rolls back to the version bundled in the image and the updater
+# downloads the current one again. The versions directory moves to /data;
+# the bundled binary is copied there only when it is newer than everything
+# already persisted (first start, or an image that ships a newer Claude).
+if ! bashio::fs.directory_exists "${CLAUDE_PERSISTENT_VERSIONS}" \
+    && bashio::fs.directory_exists "${CLAUDE_LEGACY_VERSIONS}" \
+    && [[ ! -L ${CLAUDE_LEGACY_VERSIONS} ]]; then
+    bashio::log.notice \
+        "Moving Claude versions from ${CLAUDE_LEGACY_VERSIONS} to ${CLAUDE_PERSISTENT_VERSIONS}"
+    mv "${CLAUDE_LEGACY_VERSIONS}" "${CLAUDE_PERSISTENT_VERSIONS}" \
+        || bashio::log.warning 'Failed to move the old Claude versions directory'
+elif bashio::fs.directory_exists "${CLAUDE_LEGACY_VERSIONS}"; then
+    bashio::log.warning \
+        "${CLAUDE_LEGACY_VERSIONS} is no longer used: remove the init_commands entry that creates it, then delete the directory"
+fi
+
+mkdir -p "${CLAUDE_PERSISTENT_VERSIONS}" \
+    || bashio::log.warning 'Failed to create the persistent Claude versions directory'
+
+if [[ ! -L ${CLAUDE_VERSIONS} ]]; then
+    image_version=$(latest_claude_version "${CLAUDE_VERSIONS}")
+    persisted_version=$(latest_claude_version "${CLAUDE_PERSISTENT_VERSIONS}")
+    if [[ -n ${image_version} ]] \
+        && claude_version_newer "${image_version}" "${persisted_version}"; then
+        bashio::log.info "Persisting bundled Claude Code ${image_version}"
+        if ! cp "${CLAUDE_VERSIONS}/${image_version}" \
+            "${CLAUDE_PERSISTENT_VERSIONS}/${image_version}.partial" \
+            || ! mv "${CLAUDE_PERSISTENT_VERSIONS}/${image_version}.partial" \
+                "${CLAUDE_PERSISTENT_VERSIONS}/${image_version}"; then
+            bashio::log.warning 'Failed to persist the bundled Claude Code version'
+            rm -f "${CLAUDE_PERSISTENT_VERSIONS}/${image_version}.partial"
+        fi
+    fi
+fi
+
+claude_version=$(latest_claude_version "${CLAUDE_PERSISTENT_VERSIONS}")
+if [[ -n ${claude_version} ]]; then
+    if rm -rf "${CLAUDE_VERSIONS}" \
+        && ln -s "${CLAUDE_PERSISTENT_VERSIONS}" "${CLAUDE_VERSIONS}" \
+        && ln -sfn "${CLAUDE_VERSIONS}/${claude_version}" "${CLAUDE_BIN}"; then
+        bashio::log.info "Claude Code version: ${claude_version}"
+    else
+        bashio::log.warning 'Failed to link the persistent Claude versions'
+    fi
+else
+    bashio::log.warning \
+        'No persistent Claude Code version available; using the bundled one'
+fi
+
+# Session options for the `claude` wrapper and `claude-autostart`
+session_name=$(bashio::config 'claude_session_name' '')
+[[ -z ${session_name//[[:space:]]/} ]] && session_name=""
+continue_session=false
+bashio::config.true 'claude_continue_session' && continue_session=true
+{
+    printf 'CLAUDE_SESSION_NAME=%q\n' "${session_name}"
+    printf 'CLAUDE_CONTINUE_SESSION=%s\n' "${continue_session}"
+} > "${CLAUDE_ADDON_ENV}" \
+    || bashio::log.warning 'Failed to write the Claude session options'
+if [[ -n ${session_name} ]]; then
+    bashio::log.info "Claude Code session name: ${session_name}"
+fi
 
 # Copy/update Claude Code skills on every start
 if bashio::fs.directory_exists "/etc/claude/skills"; then

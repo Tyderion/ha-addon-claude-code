@@ -68,7 +68,7 @@ To install it, you need to add this repository as a custom repository:
 1. Select **Repositories**.
 1. Add the following URL:
    ```
-   https://github.com/jantimon/ha-addon-ssh
+   https://github.com/Tyderion/ha-addon-claude-code
    ```
 1. Click **Add** and then **Close**.
 1. Refresh the page and find "SSH & Claude Code Terminal" in the app store.
@@ -102,6 +102,11 @@ packages:
 init_commands:
   - ls -la
 claude_md: []
+claude_permission_mode: auto
+claude_session_name: Home Assistant
+claude_continue_session: true
+claude_autostart_session: true
+claude_remote_control: true
 ```
 
 **Note**: _This is just an example, don't copy and paste it! Create your own!_
@@ -259,6 +264,108 @@ claude_md:
 If left empty, the file is not touched, allowing you to edit it directly via
 the File Editor app or VS Code.
 
+#### Option: `claude_permission_mode`
+
+Controls how much Claude Code asks before it acts. This sets
+`permissions.defaultMode` in the persistent settings file on every app start,
+so it is the one place to change the behaviour.
+
+- `auto` (default) — Claude decides for itself whether an operation is
+  routine, using the description of this container in the `autoMode` section
+  of the settings file. Routine Home Assistant work (reading and editing
+  config, running the `ha-*` tools, throwaway `python3` analysis, piped
+  investigation commands) runs without prompting; the `ask` rules and the
+  destructive guard hook still apply.
+- `default` — the stock Claude Code behaviour. Everything that is not matched
+  by an explicit `allow` rule prompts you. Safest, and by far the noisiest,
+  because the shapes Claude actually writes (heredocs, pipes,
+  `cd x && y`) never match a prefix rule.
+- `acceptEdits` — like `default`, but file edits inside the working directory
+  are approved automatically while commands still prompt.
+- `bypassPermissions` — nothing prompts. The `deny` and `ask` rules are
+  skipped entirely; only the destructive guard hook still holds, because
+  hooks run in every mode. Use this only if you understand that Claude then
+  has the same reach into your Home Assistant instance that you do over SSH.
+
+```yaml
+claude_permission_mode: auto
+```
+
+#### Option: `claude_session_name`
+
+Gives every Claude Code session a fixed display name, shown in the prompt
+box, the `/resume` picker, the terminal title and the Claude app. Claude never
+renames a session named this way. Leave it empty to keep the automatically
+derived names (`homeassistant-<n>`).
+
+The name is applied to interactive and `-p` sessions alike, including
+`claude --resume` and `claude --continue`. Subcommands such as `claude mcp`,
+`claude update` and `claude doctor` are left alone, and an explicit
+`claude -n "Something else"` always wins.
+
+Sessions running at the same time all carry the same name, e.g. a second tmux
+window, or an SSH login with `share_sessions` disabled. To tell one apart,
+start it with `claude -n "Something else"`.
+
+```yaml
+claude_session_name: Home Assistant
+```
+
+#### Option: `claude_continue_session`
+
+When set to `true`, the Claude Code session that starts automatically in the
+web terminal continues the most recent conversation in `/homeassistant`
+instead of starting a new one. If there is no previous conversation yet, it
+starts fresh.
+
+Only the first automatic start in the web terminal continues. SSH logins
+(with `share_sessions` disabled), additional tmux windows and a `claude` you
+type yourself always start a new conversation, so two Claude processes never
+work on the same conversation. Defaults to `false`.
+
+#### Option: `claude_autostart_session`
+
+When set to `true`, the terminal session, and with it Claude Code, starts as
+soon as the app starts rather than when you first open the web terminal. This
+makes [Remote Control][claude-remote-control] and the Claude app reach your
+session right after a restart without opening Home Assistant. Opening the web
+terminal attaches to the running session.
+
+Claude Code holds a few hundred MB of memory while it runs, which matters on
+small hardware, so this defaults to `false`. If you exit Claude and then the
+shell, the session ends and starts again the next time you open the web
+terminal.
+
+#### Option: `claude_remote_control`
+
+When set to `true`, every interactive Claude Code session connects to
+[Remote Control][claude-remote-control] as soon as it starts, so you can pick
+it up from [claude.ai/code](https://claude.ai/code) or the Claude app without
+running `/rc` first. Together with `claude_autostart_session`, the session is
+reachable right after the app starts.
+
+This sets `remoteControlAtStartup` in the persistent settings file on every
+app start, so it overrides the "Enable Remote Control for all sessions" toggle
+in `/config`. Remote Control needs a claude.ai login on a Pro, Max, Team or
+Enterprise plan. Defaults to `false`.
+
+### Claude Code updates
+
+Claude Code updates itself in the background. The app keeps the downloaded
+versions in `/data/claude-versions`, so an update survives restarts instead
+of rolling back to the version bundled with the app. When an app update ships
+a newer Claude Code than the one you have, that one is used instead. The
+directory is excluded from backups, since it can always be rebuilt.
+
+### Migrating from `init_commands` workarounds
+
+Earlier versions needed `init_commands` entries to keep Claude Code updates,
+pin the session name, continue the last conversation, or start the session
+at boot. Remove those entries and use the options above instead. On the first
+start after updating, the app moves an existing `/share/.claude-versions`
+directory to `/data/claude-versions`; if the old entry recreates it, the log
+warns you until the entry is removed.
+
 ## Using Claude Code
 
 This app comes with [Claude Code][claude-code] pre-installed, an AI-powered
@@ -285,16 +392,91 @@ and context window usage.
 
 ### Pre-configured Permissions
 
-Claude Code comes with default permissions optimized for Home Assistant:
+The default permission mode is `auto` (see
+[`claude_permission_mode`](#option-claude_permission_mode)). The trust
+boundary is the container, not the individual command: this app runs as root
+and holds a Supervisor API token, so anything that can reach the Supervisor
+can already restart Core and read every secret. Arguing over which binaries
+Claude may invoke buys no safety, and in the stock `default` mode it bought a
+prompt on nearly every command, because heredoc `python3` scripts, pipes and
+`cd x && y` chains never match a prefix allow rule.
 
-- **Read/Edit**: `/homeassistant/**` (your HA config)
-- **Read/Edit**: `/addon_configs/**`, `/share/**`
+So the settings file describes the container to Claude instead, in an
+`autoMode` block, and lets it approve routine Home Assistant work by itself:
+reading and editing config under `/homeassistant`, running the bundled `ha-*`
+tools, `sqlite3` queries against the recorder database, throwaway `python3`
+and `bash` analysis, and read-only pipelines through `jq`, `rg` and friends.
+
+Explicit rules still exist and still take precedence:
+
+- **Read/Edit** (Edit covers every file-writing tool): `/homeassistant/**`,
+  `/addon_configs/**`, `/share/**`
 - **Read**: `/addons/**`, `/backup/**`, `/media/**`, `/ssl/**`
-- **Bash**: `ha *` (HA CLI), `ha-reload`, `yamllint *`, `cat *`, `ls *`, `sqlite3 *`, `python3 *`, `bluetoothctl *`, `curl http://supervisor/*`
+- **Bash**: the `ha` CLI, the bundled `ha-*` tools, `yamllint`, `sqlite3`,
+  `python3`, `bluetoothctl`, read-only shell utilities and `git`
+  subcommands, and `curl` GETs to `http://supervisor/*`
 
-These permissions are stored in `/data/.claude/settings.json` and persist across
-restarts. You can customize them by editing this file or using Claude's
-`/permissions` command.
+**Always asks first**, in every mode except `bypassPermissions`:
+`ha core restart/stop/update`, `ha host reboot/shutdown`,
+`ha backup restore`, `ha addons uninstall/stop`, `ha os update`,
+`ha supervisor update`, `curl` POSTs to the Supervisor API (which can call
+any service, restart Core, or restore a backup), and reading or writing
+`secrets.yaml`. For `secrets.yaml` a hook also covers shell commands that name
+the file, since the `ask` rules only apply to Claude's file tools and auto
+mode would otherwise approve a `cat` or `printf >>` as routine. A command
+that reaches the file without naming it, such as `grep -r` over
+`/homeassistant`, is not caught.
+
+**Denied outright**: edits to `/homeassistant/.storage/**`. That directory is
+Home Assistant's internal state; dashboards go through `ha-dashboard` and
+everything else through the UI. The same hook blocks the common shell writes
+into it (`tee`, `sed`, `cp`, `mv`, redirects). Any other shell command that
+names `.storage` asks first unless every part of it is a plain read (`cat`,
+`jq`, `rg`, `ls`, ...) with output going only to `/tmp`, so a python script,
+an `rm` or a `cd .storage && ...` never touches it without your say-so.
+Reading the registries stays prompt-free.
+
+These permissions live in `/share/.claude/settings.json` and persist across
+restarts. New defaults are merged in additively on every start, so rules you
+add by hand or with Claude's `/permissions` command are never dropped. The
+one exception is a short list of rules the app itself shipped in earlier
+versions and has since replaced (`/etc/claude/settings-stale.json`); those
+are pruned by exact match, because they used a `Bash(cmd *)` glob form that
+never actually matched anything and only made the file look protective.
+
+### Guardrails
+
+Four hooks ship with the app and are registered automatically in
+`/share/.claude/settings.json`:
+
+- **Destructive guard** — a `PreToolUse` hook that blocks a small set of
+  operations outright, whatever the permission mode: recursive deletes
+  targeting `/` or a mapped Home Assistant directory, `mkfs` and `dd` writes
+  to device nodes, piping a download straight into a shell, and any shell
+  write into `.storage`. Hooks run even under `bypassPermissions`, which is
+  the point — this is the floor that holds when the permission rules are
+  switched off. Merely consequential operations (restarts, reboots, backup
+  restores) are deliberately _not_ here; those are things you legitimately
+  ask for, so they sit in the `ask` list instead.
+- **Sensitive-operation prompts** — a `PreToolUse` hook that makes Claude
+  ask you first, in auto mode too, before a shell command that names
+  `secrets.yaml`, that could write into `.storage` (see above), or that
+  changes an entity_id with `ha-entities rename` (a `--dry-run`, which only
+  lists the references, runs without asking).
+- **Tool path rewriting** — Claude reaching for `./ha-entities`,
+  `/usr/local/bin/ha-service` or `python3 ha-state.py` has the command
+  rewritten to the bare PATH name before it runs. Without this, those forms
+  miss the allow rules, prompt you needlessly, and push Claude toward
+  hand-rolled scripts instead of the real tools.
+- **YAML validation** — every edit to a `.yaml` file under `/homeassistant`
+  is parsed immediately. Home Assistant's custom tags (`!secret`, `!include*`,
+  `!input`) are understood, and duplicate top-level keys are reported as
+  errors because they silently discard the earlier block. Failures are handed
+  straight back to Claude to fix. Style is not checked; run `yamllint` for that.
+
+Unlike permissions, the `statusLine`, `hooks` and `autoMode` sections are
+app-managed: they describe what the image ships and are overwritten from it on
+every start, so custom hooks belong in a separate settings file.
 
 ### Custom Project Instructions
 
@@ -325,7 +507,7 @@ and customize.
 ### Session Persistence
 
 Claude Code settings, history, and authentication persist across app restarts.
-All data is stored in `/data/.claude/`.
+All data is stored in `/share/.claude/`.
 
 ### YAML Validation
 
@@ -349,23 +531,38 @@ ha-reload
 
 This is equivalent to Developer Tools → YAML → Quick Reload in the UI. It:
 
-- Validates configuration first (aborts if invalid)
-- Reloads: automations, scripts, scenes, groups, input helpers, templates,
-  timers, zones, persons, schedules, themes, core config
+- Reloads all hot-reloadable YAML domains at once (see the
+  `HomeAssistantReload` skill for the full list)
 - Has no downtime (instant reload)
 
-Use `ha core restart` only when adding new integrations or changing
-logger/recorder/http settings.
+Validate your changes first with `yamllint` (and `ha core check` for
+`configuration.yaml` changes). Use `ha core restart` only when adding new
+integrations or changing logger/recorder/http settings.
 
 ### Built-in Skills
 
-Claude Code comes with the `HomeAssistantReload` skill pre-installed. You can
-invoke it with `/homeassistant-reload` or Claude will automatically use it when
-you ask to apply configuration changes.
+Claude Code comes with these skills pre-installed. Claude picks the right one
+from what you ask; you can also invoke one directly, e.g.
+`/HomeAssistantReload`.
 
-The skill intelligently chooses between `ha-reload` (for YAML changes) and
-`ha core restart` (for new integrations), and guides you through validation
-before applying changes.
+- `HAEntities` — find entities, their states, areas, domains, scripts and
+  automations (`ha-entities`).
+- `EntityReferences` — what uses an entity or device: automations, scripts,
+  scenes, groups, dashboards and templates (`ha-entities refs`).
+- `UpdateEntity` — rename entities and devices, move them to an area, set
+  icons, hide or disable them, change entity_ids (`ha-entities update` /
+  `rename`), all through the registry API instead of `.storage`.
+- `CallService` — look up a service's real fields and call it (`ha-service`).
+- `SetState` — set helpers, counters, timers and vars with validation and
+  read-back (`ha-state`).
+- `TestTemplate` — render Jinja templates against live state (`ha-template`).
+- `QueryHistory` — answer "when / how long / how often" from recorded history
+  (`ha-history`).
+- `DebugAutomation` — find out why an automation did or didn't run, from its
+  traces (`ha-trace`).
+- `EditDashboard` — change dashboards, views and cards (`ha-dashboard`).
+- `HomeAssistantReload` — apply YAML changes, choosing between `ha-reload`
+  and `ha core restart` and validating first.
 
 ## Known issues and limitations
 
@@ -429,6 +626,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 [alpine-packages]: https://pkgs.alpinelinux.org/packages
+[claude-remote-control]: https://code.claude.com/docs/en/remote-control
 [claude-code]: https://claude.ai/code
 [contributors]: https://github.com/hassio-addons/app-ssh/graphs/contributors
 [discord-ha]: https://discord.gg/c5DvZ4e

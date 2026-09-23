@@ -4,7 +4,7 @@
 Usage:
   ha-dashboard list                                    List all dashboards
   ha-dashboard get <url_path>                          Print config JSON to stdout
-  ha-dashboard set <url_path>                          Read JSON from stdin and save
+  ha-dashboard set <url_path> <file>                   Save dashboard config from JSON file
   ha-dashboard create <url_path> <title> [options]     Create a new dashboard
   ha-dashboard delete <url_path>                       Delete a dashboard
   ha-dashboard update <url_path> [options]             Update dashboard metadata
@@ -28,166 +28,30 @@ Setup:
 """
 
 import argparse
-import base64
 import json
 import os
-import socket
-import struct
 import sys
 
-HA_HOST = "localhost"
-HA_PORT = 8123
-TOKEN_FILE = "/homeassistant/.claude/ha_token"
-
-
-def get_token():
-    token = os.environ.get("HA_TOKEN")
-    if not token and os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE) as f:
-            token = f.read().strip()
-    if not token:
-        print(
-            "Error: No HA token found.\n"
-            "Set HA_TOKEN env var or create a long-lived token:\n"
-            "  HA UI → Profile → Security → Long-Lived Access Tokens → Create Token\n"
-            f"  echo 'your_token' > {TOKEN_FILE}\n"
-            f"  chmod 600 {TOKEN_FILE}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return token
-
-
-# --- Minimal WebSocket client (stdlib only) ---
-
-
-class WS:
-    """Minimal WebSocket client with a persistent receive buffer.
-
-    HA sends the first frame (auth_required) in the same TCP segment as the
-    HTTP 101 response, so we must carry over any bytes past the header boundary.
-    """
-
-    def __init__(self):
-        self._sock = socket.create_connection((HA_HOST, HA_PORT), timeout=10)
-        self._buf = b""
-        self._handshake()
-
-    def _handshake(self):
-        key = base64.b64encode(os.urandom(16)).decode()
-        request = (
-            f"GET /api/websocket HTTP/1.1\r\n"
-            f"Host: {HA_HOST}:{HA_PORT}\r\n"
-            f"Upgrade: websocket\r\n"
-            f"Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {key}\r\n"
-            f"Sec-WebSocket-Version: 13\r\n"
-            f"\r\n"
-        )
-        self._sock.sendall(request.encode())
-
-        while b"\r\n\r\n" not in self._buf:
-            chunk = self._sock.recv(4096)
-            if not chunk:
-                raise RuntimeError("Connection closed during WebSocket handshake")
-            self._buf += chunk
-
-        end = self._buf.index(b"\r\n\r\n") + 4
-        headers, self._buf = self._buf[:end], self._buf[end:]
-
-        if b"101" not in headers.split(b"\r\n", 1)[0]:
-            raise RuntimeError(f"WebSocket upgrade failed: {headers[:200]}")
-
-    def _read(self, n: int) -> bytes:
-        while len(self._buf) < n:
-            chunk = self._sock.recv(4096)
-            if not chunk:
-                raise RuntimeError("Connection closed while reading")
-            self._buf += chunk
-        data, self._buf = self._buf[:n], self._buf[n:]
-        return data
-
-    def recv(self) -> dict:
-        header = self._read(2)
-        masked = (header[1] & 0x80) != 0
-        length = header[1] & 0x7F
-
-        if length == 126:
-            length = struct.unpack(">H", self._read(2))[0]
-        elif length == 127:
-            length = struct.unpack(">Q", self._read(8))[0]
-
-        mask = self._read(4) if masked else b""
-        payload = self._read(length)
-
-        if masked:
-            payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
-
-        return json.loads(payload.decode())
-
-    def send(self, data: dict):
-        payload = json.dumps(data).encode()
-        length = len(payload)
-        mask_key = os.urandom(4)
-        masked = bytes(b ^ mask_key[i % 4] for i, b in enumerate(payload))
-
-        if length < 126:
-            header = bytes([0x81, 0x80 | length]) + mask_key
-        elif length < 65536:
-            header = bytes([0x81, 0xFE]) + struct.pack(">H", length) + mask_key
-        else:
-            header = bytes([0x81, 0xFF]) + struct.pack(">Q", length) + mask_key
-
-        self._sock.sendall(header + masked)
-
-    def close(self):
-        self._sock.close()
-
-
-def ha_call(command: dict) -> dict:
-    """Connect to HA WebSocket, authenticate, send one command, return result."""
-    ws = WS()
-    try:
-        msg = ws.recv()
-        if msg.get("type") != "auth_required":
-            raise RuntimeError(f"Expected auth_required, got: {msg}")
-
-        ws.send({"type": "auth", "access_token": get_token()})
-        msg = ws.recv()
-        if msg.get("type") != "auth_ok":
-            raise RuntimeError(
-                "Authentication failed. Check your token in "
-                f"HA_TOKEN env var or {TOKEN_FILE}"
-            )
-
-        command["id"] = 1
-        ws.send(command)
-        return ws.recv()
-    finally:
-        ws.close()
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from ha_lib import ha_result
 
 
 def _dashboard_id(url_path: str) -> str:
-    """Derive the dashboard_id used by update/delete from its url_path."""
-    return url_path.replace("-", "_")
-
-
-def _fail(result: dict):
-    print(f"Error: {result.get('error', result)}", file=sys.stderr)
-    sys.exit(1)
+    """Look up the dashboard_id used by update/delete from its url_path."""
+    for d in ha_result({"type": "lovelace/dashboards/list"}) or []:
+        if d.get("url_path") == url_path:
+            return d["id"]
+    raise RuntimeError(
+        f"no dashboard with url_path '{url_path}' — run `ha-dashboard list`"
+    )
 
 
 # --- Commands ---
 
 
 def cmd_list():
-    result = ha_call({"type": "lovelace/dashboards/list"})
-    if not result.get("success"):
-        _fail(result)
-    dashboards = result.get("result", [])
-    if not dashboards:
-        print("(no custom dashboards — only the default dashboard exists)")
-        return
+    dashboards = ha_result({"type": "lovelace/dashboards/list"}) or []
+    print(f"{'default':30s}  (main dashboard)")
     for d in dashboards:
         sidebar = "" if d.get("show_in_sidebar") else "  [hidden]"
         admin = "  [admin]" if d.get("require_admin") else ""
@@ -198,38 +62,47 @@ def cmd_get(url_path: str):
     cmd = {"type": "lovelace/config"}
     if url_path != "default":
         cmd["url_path"] = url_path
-    result = ha_call(cmd)
-    if not result.get("success"):
-        _fail(result)
-    print(json.dumps(result["result"], indent=2))
+    print(json.dumps(ha_result(cmd), indent=2))
 
 
 def _validate_json(raw: str) -> dict:
-    """Parse and validate JSON (same behaviour as `python3 -m json.tool`)."""
+    """Parse JSON and check it has the shape of a Lovelace config."""
     try:
         obj = json.loads(raw)
     except json.JSONDecodeError as e:
         print(f"Error: Invalid JSON: {e}", file=sys.stderr)
         sys.exit(1)
+    if not isinstance(obj, dict) or not (
+        isinstance(obj.get("views"), list) or isinstance(obj.get("strategy"), dict)
+    ):
+        print(
+            "Error: dashboard config must be a JSON object with a 'views' list "
+            "(or a 'strategy' object)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     return obj
 
 
-def cmd_set(url_path: str):
-    raw = sys.stdin.read()
+def cmd_set(url_path: str, file: str):
+    try:
+        with open(file) as f:
+            raw = f.read()
+    except OSError as e:
+        print(f"Error: cannot read {file}: {e}", file=sys.stderr)
+        sys.exit(1)
     config = _validate_json(raw)
     cmd = {"type": "lovelace/config/save", "config": config}
     if url_path != "default":
         cmd["url_path"] = url_path
-    result = ha_call(cmd)
-    if not result.get("success"):
-        _fail(result)
+    ha_result(cmd)
     print(f"Dashboard '{url_path}' saved successfully.")
 
 
 def cmd_create(
     url_path: str, title: str, icon: str, show_in_sidebar: bool, require_admin: bool
 ):
-    result = ha_call(
+    d = ha_result(
         {
             "type": "lovelace/dashboards/create",
             "url_path": url_path,
@@ -239,25 +112,27 @@ def cmd_create(
             "require_admin": require_admin,
         }
     )
-    if not result.get("success"):
-        _fail(result)
-    d = result["result"]
     print(f"Created dashboard '{d['title']}' (url_path: {d['url_path']})")
 
 
 def cmd_delete(url_path: str):
-    result = ha_call(
+    ha_result(
         {
             "type": "lovelace/dashboards/delete",
             "dashboard_id": _dashboard_id(url_path),
         }
     )
-    if not result.get("success"):
-        _fail(result)
     print(f"Deleted dashboard '{url_path}'.")
 
 
 def cmd_update(url_path: str, title, icon, show_in_sidebar, require_admin):
+    if all(v is None for v in (title, icon, show_in_sidebar, require_admin)):
+        print(
+            "Error: no metadata flags given "
+            "(use --title/--icon/--show/--hidden/--admin/--no-admin)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     cmd = {
         "type": "lovelace/dashboards/update",
         "dashboard_id": _dashboard_id(url_path),
@@ -270,10 +145,7 @@ def cmd_update(url_path: str, title, icon, show_in_sidebar, require_admin):
         cmd["show_in_sidebar"] = show_in_sidebar
     if require_admin is not None:
         cmd["require_admin"] = require_admin
-    result = ha_call(cmd)
-    if not result.get("success"):
-        _fail(result)
-    d = result["result"]
+    d = ha_result(cmd)
     print(f"Updated dashboard '{d['title']}' (url_path: {d['url_path']})")
 
 
@@ -285,7 +157,6 @@ def main():
         prog="ha-dashboard",
         description="Manage Home Assistant Lovelace dashboards via WebSocket API.",
     )
-    parser.add_argument("-H", "--host", default=HA_HOST, help=argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="command", metavar="command")
     sub.required = True
 
@@ -294,8 +165,9 @@ def main():
     p_get = sub.add_parser("get", help="Print dashboard config JSON to stdout")
     p_get.add_argument("url_path")
 
-    p_set = sub.add_parser("set", help="Read JSON from stdin and save to dashboard")
+    p_set = sub.add_parser("set", help="Save dashboard config from a JSON file")
     p_set.add_argument("url_path")
+    p_set.add_argument("file", help="JSON file to read")
 
     p_create = sub.add_parser("create", help="Create a new empty dashboard")
     p_create.add_argument("url_path", help="URL slug, e.g. my-dashboard")
@@ -365,30 +237,34 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "list":
-        cmd_list()
-    elif args.command == "get":
-        cmd_get(args.url_path)
-    elif args.command == "set":
-        cmd_set(args.url_path)
-    elif args.command == "create":
-        cmd_create(
-            args.url_path,
-            args.title,
-            args.icon,
-            args.show_in_sidebar,
-            args.require_admin,
-        )
-    elif args.command == "delete":
-        cmd_delete(args.url_path)
-    elif args.command == "update":
-        cmd_update(
-            args.url_path,
-            args.title,
-            args.icon,
-            args.show_in_sidebar,
-            args.require_admin,
-        )
+    try:
+        if args.command == "list":
+            cmd_list()
+        elif args.command == "get":
+            cmd_get(args.url_path)
+        elif args.command == "set":
+            cmd_set(args.url_path, args.file)
+        elif args.command == "create":
+            cmd_create(
+                args.url_path,
+                args.title,
+                args.icon,
+                args.show_in_sidebar,
+                args.require_admin,
+            )
+        elif args.command == "delete":
+            cmd_delete(args.url_path)
+        elif args.command == "update":
+            cmd_update(
+                args.url_path,
+                args.title,
+                args.icon,
+                args.show_in_sidebar,
+                args.require_admin,
+            )
+    except (RuntimeError, OSError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

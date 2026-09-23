@@ -3,7 +3,7 @@ name: SSH & Claude Code Terminal
 version: dev
 slug: claude
 description: SSH & Web Terminal with Claude Code for AI-assisted Home Assistant configuration
-url: https://github.com/jantimon/ha-addon-ssh
+url: https://github.com/Tyderion/ha-addon-claude-code
 startup: services
 ingress: true
 ingress_port: 0
@@ -51,6 +51,7 @@ map:
   - ssl:rw
 backup_exclude:
   - "*/.vscode-server/**"
+  - "*/claude-versions/**"
 journald: true
 options:
   ssh:
@@ -67,6 +68,11 @@ options:
   packages: []
   init_commands: []
   claude_md: []
+  claude_permission_mode: auto
+  claude_session_name: ""
+  claude_continue_session: false
+  claude_autostart_session: false
+  claude_remote_control: false
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)?
   ssh:
@@ -87,3 +93,8 @@ schema:
     - str
   claude_md:
     - str
+  claude_permission_mode: list(default|acceptEdits|auto|bypassPermissions)?
+  claude_session_name: str?
+  claude_continue_session: bool
+  claude_autostart_session: bool
+  claude_remote_control: bool

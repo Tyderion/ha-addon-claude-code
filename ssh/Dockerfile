@@ -1,4 +1,4 @@
-ARG BUILD_FROM=ghcr.io/hassio-addons/base:20.0.1
+ARG BUILD_FROM=ghcr.io/hassio-addons/base:21.0.5
 # hadolint ignore=DL3006
 FROM ${BUILD_FROM}
 
@@ -14,6 +14,7 @@ COPY requirements.txt /tmp/
 # Setup base
 ARG BUILD_ARCH=amd64
 ARG HA_CLI_VERSION="4.46.0"
+ARG CLAUDE_VERSION="2.1.221"
 
 # hadolint ignore=DL3003,DL3042
 RUN \
@@ -44,6 +45,7 @@ RUN \
         git \
         htop \
         json-c \
+        libgcc \
         libltdl \
         libstdc++ \
         libuv \
@@ -65,6 +67,7 @@ RUN \
         pulseaudio-utils \
         py3-pip \
         python3 \
+        ripgrep \
         rsync \
         sqlite \
         sudo \
@@ -92,8 +95,9 @@ RUN \
     \
     && pip3 install -r /tmp/requirements.txt \
     \
-    && npm install -g @anthropic-ai/claude-code@2.1.74 \
-    && npm cache clean --force \
+    && curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_VERSION}" \
+    # Drop installer runtime state; init-user symlinks these to /share
+    && rm -rf /root/.claude /root/.claude.json \
     \
     && apk del --no-cache --purge .build-dependencies \
     \
