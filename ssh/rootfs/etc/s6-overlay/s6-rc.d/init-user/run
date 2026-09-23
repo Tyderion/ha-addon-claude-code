@@ -140,6 +140,8 @@ fi
 #   permissions.defaultMode       from the `claude_permission_mode` option, which
 #                                 is the user's control surface for it
 #   env                           defaults fill in, user wins
+#   remoteControlAtStartup        from the `claude_remote_control` option, so
+#                                 Remote Control connects without `/rc`
 #   skipAutoPermissionPrompt      default fills in, user wins
 #   statusLine, hooks, autoMode   app-managed; they describe what the image
 #                                 ships, so the defaults overwrite them
@@ -155,16 +157,20 @@ if bashio::fs.file_exists "${CLAUDE_DEFAULT_SETTINGS}" \
             ;;
     esac
 
+    remote_control=false
+    bashio::config.true 'claude_remote_control' && remote_control=true
+
     stale="${CLAUDE_STALE_SETTINGS}"
     bashio::fs.file_exists "${stale}" || stale=/dev/null
 
-    merged=$(jq -s --arg mode "${permission_mode}" '
+    merged=$(jq -s --arg mode "${permission_mode}" --argjson rc "${remote_control}" '
         .[0] as $current | .[1] as $defaults | (.[2] // {}) as $stale |
         ($defaults | {statusLine, hooks, autoMode} | with_entries(select(.value != null))) as $managed |
         ($defaults | {skipAutoPermissionPrompt} | with_entries(select(.value != null))) as $fill |
         def keep($key): (($current.permissions[$key] // []) - ($stale[$key] // []))
             + ($defaults.permissions[$key] // []) | unique;
         $fill * $current * $managed * {
+            remoteControlAtStartup: $rc,
             env: (($defaults.env // {}) * ($current.env // {})),
             permissions: {
                 allow: keep("allow"),
@@ -179,7 +185,7 @@ if bashio::fs.file_exists "${CLAUDE_DEFAULT_SETTINGS}" \
         }
     ' "${CLAUDE_PERSISTENT_PATH}/settings.json" "${CLAUDE_DEFAULT_SETTINGS}" "${stale}" 2> /dev/null) \
         && echo "${merged}" > "${CLAUDE_PERSISTENT_PATH}/settings.json" \
-        && bashio::log.info "Claude Code permission mode: ${permission_mode}" \
+        && bashio::log.info "Claude Code permission mode: ${permission_mode}, Remote Control at startup: ${remote_control}" \
         || bashio::log.warning 'Failed to merge default Claude settings'
 fi
 

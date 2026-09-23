@@ -76,5 +76,11 @@ configuration:
       Start the terminal session and Claude Code when the app starts, so
       Remote Control and the Claude app work without opening the web
       terminal. Uses memory even when idle.
+  claude_remote_control:
+    name: Remote Control
+    description: >-
+      Connect every interactive Claude Code session to Remote Control at
+      startup, so it is reachable from claude.ai/code and the Claude app
+      without running /rc. Needs a Pro, Max, Team or Enterprise login.
 network:
   22/tcp: SSH server port (make empty to disable)

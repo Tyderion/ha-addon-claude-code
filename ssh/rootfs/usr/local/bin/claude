@@ -16,6 +16,9 @@ readonly CLAUDE_BIN="${CLAUDE_ADDON_BIN:-/root/.local/bin/claude}"
 readonly ADDON_ENV="${CLAUDE_ADDON_ENV:-/etc/claude/addon.env}"
 readonly CACHE_DIR="${CLAUDE_ADDON_CACHE:-/tmp/claude-addon}"
 # Used only when `--help` cannot be parsed (Claude Code 2.1.276)
+# Subcommands that `--help` does not list but that must never get `--name`:
+# `claude remote-control` refuses to start when a wrapper adds a global flag
+readonly -a HIDDEN_SUBCOMMANDS=(remote-control)
 readonly -a FALLBACK_SUBCOMMANDS=(
     agents attach auth auto-mode doctor gateway help import install kill logs
     mcp plugin plugins project respawn rm setup-token stop ultrareview update
@@ -60,7 +63,7 @@ subcommands() {
 is_subcommand() {
     local list
     list=$(subcommands) || list=$(printf '%s\n' "${FALLBACK_SUBCOMMANDS[@]}")
-    grep -Fxq -- "$1" <<< "${list}"
+    printf '%s\n' "${list}" "${HIDDEN_SUBCOMMANDS[@]}" | grep -Fxq -- "$1"
 }
 
 [[ -z ${CLAUDE_SESSION_NAME} ]] && passthrough "$@"

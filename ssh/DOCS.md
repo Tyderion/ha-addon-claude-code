@@ -106,6 +106,7 @@ claude_permission_mode: auto
 claude_session_name: Home Assistant
 claude_continue_session: true
 claude_autostart_session: true
+claude_remote_control: true
 ```
 
 **Note**: _This is just an example, don't copy and paste it! Create your own!_
@@ -334,6 +335,19 @@ Claude Code holds a few hundred MB of memory while it runs, which matters on
 small hardware, so this defaults to `false`. If you exit Claude and then the
 shell, the session ends and starts again the next time you open the web
 terminal.
+
+#### Option: `claude_remote_control`
+
+When set to `true`, every interactive Claude Code session connects to
+[Remote Control][claude-remote-control] as soon as it starts, so you can pick
+it up from [claude.ai/code](https://claude.ai/code) or the Claude app without
+running `/rc` first. Together with `claude_autostart_session`, the session is
+reachable right after the app starts.
+
+This sets `remoteControlAtStartup` in the persistent settings file on every
+app start, so it overrides the "Enable Remote Control for all sessions" toggle
+in `/config`. Remote Control needs a claude.ai login on a Pro, Max, Team or
+Enterprise plan. Defaults to `false`.
 
 ### Claude Code updates
 
