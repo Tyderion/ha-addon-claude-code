@@ -16,8 +16,8 @@ fmt-check-md = "npx prettier --check '**/*.md'"
 fmt-sh = "shfmt -w -i 4 -bn -ci -sr ssh/"
 fmt-check-sh = "shfmt -d -i 4 -bn -ci -sr ssh/"
 fmt-py = "ruff format ssh/"
-test = { depends-on = ["test-guard", "test-ask-secrets", "test-claude-wrapper"] }
-test-ask-secrets = "bash ssh/tests/ask-secrets.test.sh"
+test = { depends-on = ["test-guard", "test-ask-sensitive", "test-claude-wrapper"] }
+test-ask-sensitive = "bash ssh/tests/ask-sensitive.test.sh"
 test-guard = "bash ssh/tests/guard-destructive.test.sh"
 test-claude-wrapper = "bash ssh/tests/claude-wrapper.test.sh"
 fmt-check-py = "ruff check --select I ssh/ && ruff format --check ssh/"

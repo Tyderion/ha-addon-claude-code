@@ -429,7 +429,12 @@ that reaches the file without naming it, such as `grep -r` over
 
 **Denied outright**: edits to `/homeassistant/.storage/**`. That directory is
 Home Assistant's internal state; dashboards go through `ha-dashboard` and
-everything else through the UI.
+everything else through the UI. The same hook blocks the common shell writes
+into it (`tee`, `sed`, `cp`, `mv`, redirects). Any other shell command that
+names `.storage` asks first unless every part of it is a plain read (`cat`,
+`jq`, `rg`, `ls`, ...) with output going only to `/tmp`, so a python script,
+an `rm` or a `cd .storage && ...` never touches it without your say-so.
+Reading the registries stays prompt-free.
 
 These permissions live in `/share/.claude/settings.json` and persist across
 restarts. New defaults are merged in additively on every start, so rules you

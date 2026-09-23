@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # ==============================================================================
-# Table test for hooks/ask-secrets.sh
+# Table test for hooks/ask-sensitive.sh
 #
-# Reads ask-secrets.cases.tsv (`expect<TAB>command`) and feeds each case to
+# Reads ask-sensitive.cases.tsv (`expect<TAB>command`) and feeds each case to
 # the hook as a PreToolUse[Bash] payload. `ask` expects a permissionDecision
 # of "ask" on stdout, `pass` expects no output; both expect exit 0. One extra
 # case checks that a non-Bash tool is left to the permission rules.
 #
-# Run: bash ssh/tests/ask-secrets.test.sh
+# Run: bash ssh/tests/ask-sensitive.test.sh
 # ==============================================================================
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly HERE
-readonly HOOK="${HERE}/../rootfs/etc/claude/hooks/ask-secrets.sh"
-readonly CASES="${HERE}/ask-secrets.cases.tsv"
+readonly HOOK="${HERE}/../rootfs/etc/claude/hooks/ask-sensitive.sh"
+readonly CASES="${HERE}/ask-sensitive.cases.tsv"
 
 failures=0
 total=0

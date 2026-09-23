@@ -1,0 +1,37 @@
+# expect<TAB>command — `ask` expects a PreToolUse ask decision, `pass` no output
+ask	cat /homeassistant/secrets.yaml
+ask	printf 'test: bubu\n' >> /homeassistant/secrets.yaml
+ask	sed -i 's/old/new/' secrets.yaml
+ask	cd /homeassistant && grep -n api_key secrets.yaml
+ask	python3 -c "import yaml; print(yaml.safe_load(open('/config/secrets.yaml')))"
+ask	cp /homeassistant/packages/secrets.yaml /tmp/
+pass	cat /homeassistant/configuration.yaml
+pass	grep -rn '!secret' /homeassistant/automations.yaml
+pass	ha core check
+# .storage reads pass
+pass	cat /homeassistant/.storage/core.entity_registry
+pass	jq '.data.entities[] | .entity_id' /homeassistant/.storage/core.entity_registry | sort | uniq -c
+pass	ls -la /homeassistant/.storage/
+pass	cd /homeassistant/.storage && ls && wc -c core.config_entries
+pass	rg -l light.kitchen /homeassistant/.storage 2>/dev/null | head
+pass	jq . /homeassistant/.storage/lovelace > /tmp/lovelace.json
+pass	find /homeassistant/.storage -name 'core.*' -newer /tmp/x
+pass	LC_ALL=C sort /homeassistant/.storage/core.area_registry
+# .storage writes ask
+ask	python3 -c "open('/homeassistant/.storage/core.entity_registry','w').write('{}')"
+ask	rm /homeassistant/.storage/lovelace.dashboard_x
+ask	cd /homeassistant/.storage && rm core.restore_state
+ask	jq '.data.entities |= map(.disabled_by = null)' /homeassistant/.storage/core.entity_registry > core.entity_registry.new
+ask	find /homeassistant/.storage -name '*.bak' -delete
+ask	ls /homeassistant/.storage/*.bak | xargs rm
+ask	rsync -a /tmp/backup/ /homeassistant/.storage/
+ask	ln -sf /tmp/x /homeassistant/.storage/lovelace
+ask	echo $(rm /homeassistant/.storage/x)
+ask	sort -o /homeassistant/.storage/x /homeassistant/.storage/x
+ask	echo "it's fine" ; rm /homeassistant/.storage/x ; echo 'y'
+ask	cat /homeassistant/.storage/x 'unterminated
+ask	echo "$(rm /homeassistant/.storage/x)"
+pass	jq -r '.data.entries[] | select(.domain == "hue") | .title' /homeassistant/.storage/core.config_entries
+pass	grep -c \'id\' /homeassistant/.storage/core.config_entries
+ask	echo \' ; rm /homeassistant/.storage/x ; echo \'
+ask	python3 /tmp/fix_registry.py /homeassistant/.storage/core.device_registry

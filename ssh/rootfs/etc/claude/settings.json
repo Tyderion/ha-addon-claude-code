@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /etc/claude/hooks/ask-secrets.sh"
+            "command": "bash /etc/claude/hooks/ask-sensitive.sh"
           }
         ]
       }
