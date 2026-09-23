@@ -27,6 +27,15 @@
             "command": "bash /etc/claude/hooks/rewrite-ha-tool-path.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /etc/claude/hooks/ask-secrets.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [

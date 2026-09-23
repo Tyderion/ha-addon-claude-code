@@ -409,7 +409,8 @@ and `bash` analysis, and read-only pipelines through `jq`, `rg` and friends.
 
 Explicit rules still exist and still take precedence:
 
-- **Read/Edit/Write**: `/homeassistant/**`, `/addon_configs/**`, `/share/**`
+- **Read/Edit** (Edit covers every file-writing tool): `/homeassistant/**`,
+  `/addon_configs/**`, `/share/**`
 - **Read**: `/addons/**`, `/backup/**`, `/media/**`, `/ssl/**`
 - **Bash**: the `ha` CLI, the bundled `ha-*` tools, `yamllint`, `sqlite3`,
   `python3`, `bluetoothctl`, read-only shell utilities and `git`
@@ -420,7 +421,11 @@ Explicit rules still exist and still take precedence:
 `ha backup restore`, `ha addons uninstall/stop`, `ha os update`,
 `ha supervisor update`, `curl` POSTs to the Supervisor API (which can call
 any service, restart Core, or restore a backup), and reading or writing
-`secrets.yaml`.
+`secrets.yaml`. For `secrets.yaml` a hook also covers shell commands that name
+the file, since the `ask` rules only apply to Claude's file tools and auto
+mode would otherwise approve a `cat` or `printf >>` as routine. A command
+that reaches the file without naming it, such as `grep -r` over
+`/homeassistant`, is not caught.
 
 **Denied outright**: edits to `/homeassistant/.storage/**`. That directory is
 Home Assistant's internal state; dashboards go through `ha-dashboard` and
