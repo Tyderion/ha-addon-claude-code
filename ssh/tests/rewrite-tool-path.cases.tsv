@@ -1,0 +1,17 @@
+# expect<TAB>command — `expect` is the rewritten command, or `unchanged`
+ha-entities list	./ha-entities list
+ha-state show x	python3 /usr/local/bin/ha-state.py show x
+ha-integrations list --search hue	/usr/local/bin/ha-integrations list --search hue
+ha-integrations	/usr/local/bin/ha-integrations
+ha-trace list	ha-trace.py list
+ha-reload	bash ../bin/ha-reload
+ls | ha-trace list	ls | ./ha-trace list
+ha-trace;ha-state x	./ha-trace;./ha-state x
+cd /tmp && ha-history changes x	cd /tmp && python3 ha-history.py changes x
+echo $(ha-state show x)	echo $(./ha-state show x)
+unchanged	ha-entities list
+unchanged	cat /usr/local/bin/ha-entities.py
+unchanged	python3 /tmp/ha-history-analysis.py --days 3
+unchanged	bash /share/scripts/ha-reload-all.sh
+unchanged	cd /tmp && python3 ha-state_dump.py
+unchanged	rg ha-state /homeassistant

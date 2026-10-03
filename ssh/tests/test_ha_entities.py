@@ -9,18 +9,11 @@ Run: python3 ssh/tests/test_ha_entities.py
 """
 
 import copy
-import importlib.util
-import io
-import json
 import os
-import sys
 import tempfile
-import types
 import unittest
-from contextlib import redirect_stdout
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-TOOL = os.path.join(HERE, "..", "rootfs", "usr", "local", "bin", "ha-entities.py")
+from toolharness import load_tool, run_tool
 
 AREAS = [
     {"area_id": "kitchen", "name": "Kitchen"},
@@ -120,39 +113,17 @@ class FakeHA:
         raise AssertionError(f"unexpected command {kind}")
 
 
-def load_tool(fake):
-    if "yaml" not in sys.modules:
-        try:
-            import yaml  # noqa: F401
-        except ImportError:
-            sys.modules["yaml"] = types.ModuleType("yaml")
-    sys.modules["ha_lib"] = types.SimpleNamespace(ha_result=fake)
-    spec = importlib.util.spec_from_file_location("ha_entities", TOOL)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 class Base(unittest.TestCase):
     def setUp(self):
         self.fake = FakeHA()
-        self.tool = load_tool(self.fake)
+        self.tool = load_tool(
+            "ha-entities",
+            ha_result=self.fake,
+        )
 
     def run_tool(self, *argv):
         """Run main() with argv; return (exit_code, parsed_json_or_None, stderr)."""
-        out, err = io.StringIO(), io.StringIO()
-        old_argv, old_err = sys.argv, sys.stderr
-        sys.argv, sys.stderr = ["ha-entities", *argv, "--format", "json"], err
-        code = 0
-        try:
-            with redirect_stdout(out):
-                self.tool.main()
-        except SystemExit as e:
-            code = e.code or 0
-        finally:
-            sys.argv, sys.stderr = old_argv, old_err
-        text = out.getvalue()
-        return code, (json.loads(text) if text.strip() else None), err.getvalue()
+        return run_tool(self.tool, "ha-entities", *argv)
 
 
 class UpdateTest(Base):

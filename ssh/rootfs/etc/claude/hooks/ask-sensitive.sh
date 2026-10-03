@@ -24,7 +24,8 @@
 #                 removing or unloading an integration takes its devices and
 #                 entities with it
 #                 Each asks unless that command segment is a --dry-run (which
-#                 only reports what would change). A permission rule could
+#                 only reports what would change; one inside a `#` comment
+#                 does not count). A permission rule could
 #                 not tell the two apart. The tool is found anywhere in a
 #                 segment, quotes removed, so loops, xargs, `timeout`,
 #                 `bash -c "..."` and path or python3 forms all count.
@@ -42,7 +43,7 @@ set -uo pipefail
 
 # Commands that cannot write files (checked flags aside, see read_only)
 readonly -a READ_COMMANDS=(
-    cat head tail less more jq yq rg grep egrep fgrep ls find wc stat file
+    cat head tail less more jq rg grep egrep fgrep ls find wc stat file
     diff cmp sort uniq cut column tr nl od hexdump strings md5sum sha1sum
     sha256sum du basename dirname realpath readlink cd pwd echo printf test
     '[' '[[' true false
@@ -78,15 +79,31 @@ command_words() {
     ((${#words[@]})) && printf '%s\n' "${words[@]}"
 }
 
-# True if a single command (no separators) cannot write anything
+# True if a single command (no separators) cannot write anything. sort
+# writes with -o (also inside a cluster such as -uo) or --output; uniq writes
+# to its second operand, so it passes only with at most one non-flag word
+# (option values such as `-f 1` count too, which errs on the side of asking).
 read_only() {
     local -a words
+    local w operands=0
     mapfile -t words < <(command_words "$1")
     ((${#words[@]})) || return 0
     [[ " ${READ_COMMANDS[*]} " == *" ${words[0]} "* ]] || return 1
     case ${words[0]} in
         find) [[ " ${words[*]} " != *" -"@(delete|exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)" "* ]] ;;
-        sort) [[ " ${words[*]} " != *" -o"* && " ${words[*]} " != *" --output"* ]] ;;
+        sort)
+            for w in "${words[@]:1}"; do
+                [[ ${w} == --output* ]] && return 1
+                [[ ${w} == -[!-]* && ${w} == *o* ]] && return 1
+            done
+            return 0
+            ;;
+        uniq)
+            for w in "${words[@]:1}"; do
+                [[ ${w} == -?* ]] || operands=$((operands + 1))
+            done
+            ((operands <= 1))
+            ;;
         *) return 0 ;;
     esac
 }
@@ -120,6 +137,42 @@ strip_single_quotes() {
     printf '%s' "${out}"
 }
 
+# Prints the command without shell comments: an unquoted `#` that starts a
+# word, up to the end of its line. Quoted text, backslash escapes and a `#`
+# inside a word (`a#b`, `$#`, `${#x}`) are kept.
+strip_comments() {
+    local s=$1 out='' c prev=' ' state=none i
+    local -r word_start=$' \t\n;&|()'
+    for ((i = 0; i < ${#s}; i++)); do
+        c=${s:i:1}
+        case ${state} in
+            comment)
+                [[ ${c} == $'\n' ]] || continue
+                state=none
+                ;;
+            none)
+                case ${c} in
+                    '#') [[ ${word_start} == *"${prev}"* ]] && state=comment && continue ;;
+                    "'") state=single ;;
+                    '"') state=double ;;
+                    \\) c+=${s:i+1:1} i=$((i + 1)) ;;
+                esac
+                ;;
+            single) [[ ${c} == "'" ]] && state=none ;;
+            double)
+                case ${c} in
+                    \\) c+=${s:i+1:1} i=$((i + 1)) ;;
+                    '"') state=none ;;
+                esac
+                ;;
+        esac
+        out+=${c}
+        prev=${c}
+        ((${#c} == 1)) || prev=x # an escaped character is never a word start
+    done
+    printf '%s' "${out}"
+}
+
 # True if every output redirect goes to /dev/null, /tmp, or another descriptor
 redirects_safe() {
     local rest=$1 target
@@ -148,13 +201,18 @@ fi
 shopt -s extglob
 bare=$(strip_single_quotes "${cmd}") \
     || ask "This shell command could not be parsed, and it touches .storage, the entity registry or integrations."
+# Drop fd duplications (2>&1, >&2, <&3, >&-) and turn the both-streams forms
+# (&>, >&FILE) into a plain `>`, so the split below only sees real `&`
+# separators and every file redirect keeps its target
+bare=$(printf '%s' "${bare}" | sed -E 's/[0-9]*[<>]&[[:space:]]*[0-9-]+//g; s/&>/>/g; s/>&/>/g')
 # One command per line: split on ; & | newlines, $( ), backticks, ( )
 segments=$(printf '%s\n' "${bare}" | sed -E 's/\$\(|[;&|()`]/\n/g')
 
-# Destructive tool subcommands. Quotes are dropped outright here rather than
+# Destructive tool subcommands. Comments go first, so a `# --dry-run` note
+# cannot pass for the flag. Quotes are then dropped outright rather than
 # stripped with their contents, so `bash -c "ha-integrations delete x"` and
 # xargs/loop forms still show the tool and its subcommand as words.
-loose=$(printf '%s\n' "${cmd}" | tr -d "\"'" | sed -E 's/\$\(|[;&|()`]/\n/g')
+loose=$(strip_comments "${cmd}" | tr -d "\"'" | sed -E 's/\$\(|[;&|()`]/\n/g')
 while IFS= read -r segment; do
     read -ra words <<< "${segment}"
     reason=''

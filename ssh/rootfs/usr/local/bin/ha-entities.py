@@ -32,28 +32,18 @@ references by device_id.
 """
 
 import argparse
-import json
+import functools
 import os
 import re
 import sys
 
-import yaml
-
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from ha_lib import ha_result
-
-
-def print_output(data, fmt):
-    if fmt == "json":
-        print(json.dumps(data, indent=2, default=str))
-    else:
-        print(
-            yaml.safe_dump(
-                data, sort_keys=False, allow_unicode=True, default_flow_style=False
-            ),
-            end="",
-        )
-
+from ha_lib import (
+    FORMAT_PARENT,
+    ha_result,
+    print_output,
+    run_cli,
+)
 
 # Key attributes to extract per domain (token-efficient output)
 KEY_ATTR_MAP = {
@@ -323,70 +313,34 @@ def cmd_areas(args):
     print_output(output, args.format)
 
 
-def cmd_scripts(args):
+def cmd_domain_list(domain, key, args):
+    """List the entities of one domain ("script"/"automation") under `key`."""
     states = ha_result({"type": "get_states"}) or []
 
-    # Filter to script entities only
-    scripts = [s for s in states if s["entity_id"].startswith("script.")]
+    # Filter to this domain's entities only
+    items = [s for s in states if s["entity_id"].startswith(f"{domain}.")]
 
     # Sort by friendly_name/alias for easier reading
-    scripts.sort(
+    items.sort(
         key=lambda s: (
             s.get("attributes", {}).get("friendly_name", s["entity_id"]).lower()
         )
     )
 
-    output_scripts = []
-    for s in scripts:
+    output_items = []
+    for s in items:
         attrs = s.get("attributes", {})
-        output_scripts.append(
+        output_items.append(
             {
                 "entity_id": s["entity_id"],
                 "alias": attrs.get("friendly_name", s["entity_id"]),
-                "state": s["state"],  # 'on' = running, 'off' = idle
+                "state": s["state"],  # 'on' = running/enabled, 'off' = idle/disabled
                 "mode": attrs.get("mode"),
                 "last_triggered": attrs.get("last_triggered"),
             }
         )
 
-    output = {
-        "count": len(output_scripts),
-        "scripts": output_scripts,
-    }
-    print_output(output, args.format)
-
-
-def cmd_automations(args):
-    states = ha_result({"type": "get_states"}) or []
-
-    # Filter to automation entities only
-    automations = [s for s in states if s["entity_id"].startswith("automation.")]
-
-    # Sort by friendly_name/alias for easier reading
-    automations.sort(
-        key=lambda s: (
-            s.get("attributes", {}).get("friendly_name", s["entity_id"]).lower()
-        )
-    )
-
-    output_automations = []
-    for s in automations:
-        attrs = s.get("attributes", {})
-        output_automations.append(
-            {
-                "entity_id": s["entity_id"],
-                "alias": attrs.get("friendly_name", s["entity_id"]),
-                "state": s["state"],  # 'on' = enabled, 'off' = disabled
-                "mode": attrs.get("mode"),
-                "last_triggered": attrs.get("last_triggered"),
-            }
-        )
-
-    output = {
-        "count": len(output_automations),
-        "automations": output_automations,
-    }
-    print_output(output, args.format)
+    print_output({"count": len(output_items), key: output_items}, args.format)
 
 
 # ── update / rename ──────────────────────────────────────────────────────────
@@ -771,13 +725,6 @@ def cmd_rename(args):
 
 
 def main():
-    fmt_parent = argparse.ArgumentParser(add_help=False)
-    fmt_parent.add_argument(
-        "--format",
-        choices=["yaml", "json"],
-        default="yaml",
-        help="Output format (default: yaml)",
-    )
 
     parser = argparse.ArgumentParser(
         prog="ha-entities",
@@ -786,7 +733,7 @@ def main():
     sub = parser.add_subparsers(dest="command", metavar="command", required=True)
 
     p_list = sub.add_parser(
-        "list", parents=[fmt_parent], help="List entities with optional filters"
+        "list", parents=[FORMAT_PARENT], help="List entities with optional filters"
     )
     p_list.add_argument(
         "--domain",
@@ -819,36 +766,38 @@ def main():
     p_list.set_defaults(func=cmd_list)
 
     p_get = sub.add_parser(
-        "get", parents=[fmt_parent], help="Get full details for specific entities"
+        "get", parents=[FORMAT_PARENT], help="Get full details for specific entities"
     )
     p_get.add_argument("entity_ids", nargs="+", metavar="entity_id")
     p_get.set_defaults(func=cmd_get)
 
     p_domains = sub.add_parser(
-        "domains", parents=[fmt_parent], help="List all domains with entity counts"
+        "domains", parents=[FORMAT_PARENT], help="List all domains with entity counts"
     )
     p_domains.set_defaults(func=cmd_domains)
 
     p_areas = sub.add_parser(
-        "areas", parents=[fmt_parent], help="List all areas with entity counts"
+        "areas", parents=[FORMAT_PARENT], help="List all areas with entity counts"
     )
     p_areas.set_defaults(func=cmd_areas)
 
     p_scripts = sub.add_parser(
-        "scripts", parents=[fmt_parent], help="List all scripts with their aliases"
+        "scripts", parents=[FORMAT_PARENT], help="List all scripts with their aliases"
     )
-    p_scripts.set_defaults(func=cmd_scripts)
+    p_scripts.set_defaults(func=functools.partial(cmd_domain_list, "script", "scripts"))
 
     p_automations = sub.add_parser(
         "automations",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="List all automations with their aliases",
     )
-    p_automations.set_defaults(func=cmd_automations)
+    p_automations.set_defaults(
+        func=functools.partial(cmd_domain_list, "automation", "automations")
+    )
 
     p_update = sub.add_parser(
         "update",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="Change an entity's (or its device's) name, area, icon, visibility",
     )
     p_update.add_argument("entity_id")
@@ -887,7 +836,7 @@ def main():
 
     p_rename = sub.add_parser(
         "rename",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="Change an entity_id and list the references that still use the old one",
     )
     p_rename.add_argument("entity_id")
@@ -901,7 +850,7 @@ def main():
 
     p_refs = sub.add_parser(
         "refs",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="Show what uses an entity: automations, scripts, scenes, "
         "dashboards, templates",
     )
@@ -914,13 +863,7 @@ def main():
     )
     p_refs.set_defaults(func=cmd_refs)
 
-    args = parser.parse_args()
-
-    try:
-        args.func(args)
-    except (RuntimeError, OSError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    run_cli(parser)
 
 
 if __name__ == "__main__":

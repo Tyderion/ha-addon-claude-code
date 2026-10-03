@@ -22,15 +22,19 @@ All commands accept --format yaml|json (default: yaml).
 
 import argparse
 import difflib
-import json
 import os
 import re
 import sys
 
-import yaml
-
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from ha_lib import ha_call, ha_result
+from ha_lib import (
+    FORMAT_PARENT,
+    ha_call,
+    ha_result,
+    json_or_str,
+    print_output,
+    run_cli,
+)
 
 BOOL_VALUES = ("on", "off", "toggle")
 TIMER_SERVICES = {
@@ -41,18 +45,6 @@ TIMER_SERVICES = {
     "change": "active",
 }
 COUNTER_KEYWORDS = ("increment", "decrement", "reset")
-
-
-def print_output(data, fmt):
-    if fmt == "json":
-        print(json.dumps(data, indent=2, default=str))
-    else:
-        print(
-            yaml.safe_dump(
-                data, sort_keys=False, allow_unicode=True, default_flow_style=False
-            ),
-            end="",
-        )
 
 
 def get_states():
@@ -70,13 +62,6 @@ def find_entity(entity_id, states):
         f"no entity '{entity_id}'{hint} "
         "(find entities with `ha-entities list --search ...`)"
     )
-
-
-def parse_json_value(value):
-    try:
-        return json.loads(value)
-    except json.JSONDecodeError:
-        return value
 
 
 def attr_subset(attrs, keys):
@@ -169,7 +154,7 @@ def build_timer(state, value, args):
 
 
 def build_var(state, value, args):
-    data = {"entity_id": state["entity_id"], "value": parse_json_value(value)}
+    data = {"entity_id": state["entity_id"], "value": json_or_str(value)}
     return "set", data, None
 
 
@@ -273,13 +258,6 @@ def cmd_set(args):
 
 
 def main():
-    fmt_parent = argparse.ArgumentParser(add_help=False)
-    fmt_parent.add_argument(
-        "--format",
-        choices=["yaml", "json"],
-        default="yaml",
-        help="Output format (default: yaml)",
-    )
 
     parser = argparse.ArgumentParser(
         prog="ha-state",
@@ -288,13 +266,13 @@ def main():
     sub = parser.add_subparsers(dest="command", metavar="command", required=True)
 
     p_show = sub.add_parser(
-        "show", parents=[fmt_parent], help="Current state and accepted values"
+        "show", parents=[FORMAT_PARENT], help="Current state and accepted values"
     )
     p_show.add_argument("entity_id", help="Entity in a virtual-state domain")
     p_show.set_defaults(func=cmd_show)
 
     p_set = sub.add_parser(
-        "set", parents=[fmt_parent], help="Set a value (validated, then verified)"
+        "set", parents=[FORMAT_PARENT], help="Set a value (validated, then verified)"
     )
     p_set.add_argument("entity_id", help="Entity in a virtual-state domain")
     p_set.add_argument("value", help="New value, or a keyword for timer/counter")
@@ -313,13 +291,7 @@ def main():
     )
     p_set.set_defaults(func=cmd_set)
 
-    args = parser.parse_args()
-
-    try:
-        args.func(args)
-    except (RuntimeError, OSError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    run_cli(parser)
 
 
 if __name__ == "__main__":

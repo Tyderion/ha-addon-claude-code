@@ -18,6 +18,9 @@ readonly HERE
 readonly WRAPPER="${HERE}/../rootfs/usr/local/bin/claude"
 readonly CASES="${HERE}/claude-wrapper.cases.tsv"
 
+# shellcheck source=hook-table.sh
+source "${HERE}/hook-table.sh"
+
 WORK=$(mktemp -d)
 readonly WORK
 trap 'rm -rf "${WORK}"' EXIT
@@ -50,9 +53,8 @@ fi
 STUB
 chmod +x "${CLAUDE_ADDON_BIN}"
 
-failures=0
-total=0
-
+# Same counters and summary as hook-table.sh, but a case here is a wrapper run
+# (name, args, expected argv) rather than a hook payload, so check() differs.
 check() {
     local name=$1 args=$2 expect=$3 got
     total=$((total + 1))
@@ -90,5 +92,4 @@ STUB_NO_HELP=1 check 'Home Assistant' 'hello' '[--name][Home Assistant][hello]'
     failures=$((failures + 1))
 }
 
-printf '\n%d/%d passed\n' "$((total - failures))" "${total}"
-exit $((failures > 0))
+finish

@@ -12,18 +12,13 @@ Run: python3 ssh/tests/test_ha_integrations.py
 """
 
 import copy
-import importlib.util
-import io
 import json
 import os
 import sys
 import tempfile
-import types
 import unittest
-from contextlib import redirect_stdout
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-TOOL = os.path.join(HERE, "..", "rootfs", "usr", "local", "bin", "ha-integrations.py")
+from toolharness import load_tool, run_tool
 
 CONFIG_FLOW = "/api/config/config_entries/flow"
 OPTIONS_FLOW = "/api/config/config_entries/options/flow"
@@ -363,44 +358,20 @@ class FakeHA:
         return result
 
 
-def load_tool(fake):
-    if "yaml" not in sys.modules:
-        try:
-            import yaml  # noqa: F401
-        except ImportError:
-            sys.modules["yaml"] = types.ModuleType("yaml")
-    sys.modules["ha_lib"] = types.SimpleNamespace(
-        ha_result=fake.ws,
-        ha_http=fake.http,
-        HAHTTPError=FakeHTTPError,
-        HATimeout=FakeTimeout,
-    )
-    spec = importlib.util.spec_from_file_location("ha_integrations", TOOL)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 class Base(unittest.TestCase):
     def setUp(self):
         self.fake = FakeHA()
-        self.tool = load_tool(self.fake)
+        self.tool = load_tool(
+            "ha-integrations",
+            ha_result=self.fake.ws,
+            ha_http=self.fake.http,
+            HAHTTPError=FakeHTTPError,
+            HATimeout=FakeTimeout,
+        )
 
     def run_tool(self, *argv):
         """Run main() with argv; return (exit_code, parsed_json_or_None, stderr)."""
-        out, err = io.StringIO(), io.StringIO()
-        old_argv, old_err = sys.argv, sys.stderr
-        sys.argv, sys.stderr = ["ha-integrations", *argv, "--format", "json"], err
-        code = 0
-        try:
-            with redirect_stdout(out):
-                self.tool.main()
-        except SystemExit as e:
-            code = e.code or 0
-        finally:
-            sys.argv, sys.stderr = old_argv, old_err
-        text = out.getvalue()
-        return code, (json.loads(text) if text.strip() else None), err.getvalue()
+        return run_tool(self.tool, "ha-integrations", *argv)
 
     def assertNoOpenFlows(self):
         self.assertEqual(self.fake.flows, {}, "a flow was left open")

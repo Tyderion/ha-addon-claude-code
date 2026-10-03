@@ -32,14 +32,20 @@ All commands accept --format yaml|json (default: yaml).
 import argparse
 import difflib
 import fnmatch
-import json
 import os
 import sys
 
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from ha_lib import ha_call, ha_result
+from ha_lib import (
+    FORMAT_PARENT,
+    ha_call,
+    ha_result,
+    parse_pairs,
+    print_output,
+    run_cli,
+)
 
 # Service calls that can take HA down, run arbitrary code, or delete data.
 # The permission ask-list gates the canonical command forms; this in-tool
@@ -65,18 +71,6 @@ VIRTUAL_STATE_DOMAINS = (
     "var",
 )
 VIRTUAL_STATE_EXEMPT_SERVICES = ("reload", "configure")
-
-
-def print_output(data, fmt):
-    if fmt == "json":
-        print(json.dumps(data, indent=2, default=str))
-    else:
-        print(
-            yaml.safe_dump(
-                data, sort_keys=False, allow_unicode=True, default_flow_style=False
-            ),
-            end="",
-        )
 
 
 def fetch_services():
@@ -143,14 +137,7 @@ def parse_data(args):
         if loaded is not None and not isinstance(loaded, dict):
             raise RuntimeError("--data-file must contain a mapping")
         data.update(loaded or {})
-    for pair in args.data or []:
-        key, sep, value = pair.partition("=")
-        if not sep or not key:
-            raise RuntimeError(f"--data expects KEY=VALUE, got '{pair}'")
-        try:
-            data[key] = json.loads(value)
-        except json.JSONDecodeError:
-            data[key] = value
+    data.update(parse_pairs(args.data, "--data"))
     return data
 
 
@@ -317,13 +304,6 @@ def cmd_call(args):
 
 
 def main():
-    fmt_parent = argparse.ArgumentParser(add_help=False)
-    fmt_parent.add_argument(
-        "--format",
-        choices=["yaml", "json"],
-        default="yaml",
-        help="Output format (default: yaml)",
-    )
 
     parser = argparse.ArgumentParser(
         prog="ha-service",
@@ -333,7 +313,7 @@ def main():
 
     p_list = sub.add_parser(
         "list",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="Domains and services (compact map; details with --domain/--search)",
     )
     p_list.add_argument("--domain", default=None, help="Only this domain")
@@ -344,12 +324,12 @@ def main():
     p_list.set_defaults(func=cmd_list)
 
     p_show = sub.add_parser(
-        "show", parents=[fmt_parent], help="Full field spec for one service"
+        "show", parents=[FORMAT_PARENT], help="Full field spec for one service"
     )
     p_show.add_argument("service", help="domain.service")
     p_show.set_defaults(func=cmd_show)
 
-    p_call = sub.add_parser("call", parents=[fmt_parent], help="Call a service")
+    p_call = sub.add_parser("call", parents=[FORMAT_PARENT], help="Call a service")
     p_call.add_argument("service", help="domain.service")
     p_call.add_argument(
         "--entity", action="append", metavar="ENTITY_ID", help="Target entity"
@@ -389,13 +369,7 @@ def main():
     )
     p_call.set_defaults(func=cmd_call)
 
-    args = parser.parse_args()
-
-    try:
-        args.func(args)
-    except (RuntimeError, OSError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    run_cli(parser)
 
 
 if __name__ == "__main__":

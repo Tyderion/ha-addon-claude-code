@@ -1,6 +1,24 @@
 #!/command/with-contenv bashio
+# shellcheck shell=bash
 # ==============================================================================
 # Home Assistant Community App: Advanced SSH & Web Terminal
-# This script overrides the reboot command to reboot the host machine.
+# This script overrides the reboot command to reboot the host machine through
+# the Supervisor.
+#
+# Accepted arguments: none, `now`, or -f/--force (the Supervisor reboot is
+# always the clean one, which is the safer reading of a forced reboot).
+# Anything else (-p, --halt, -w, ...) prints an error and exits 1 without
+# acting, since it asks for something other than a plain reboot.
 # ==============================================================================
+for arg in "$@"; do
+    case "${arg}" in
+        now | -f | --force) ;;
+        *)
+            echo "reboot: unsupported argument '${arg}'." \
+                "Only a plain host reboot (reboot [now]) is supported." >&2
+            exit 1
+            ;;
+    esac
+done
+
 bashio::host.reboot

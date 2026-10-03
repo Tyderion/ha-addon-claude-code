@@ -176,11 +176,7 @@ if bashio::fs.file_exists "${CLAUDE_DEFAULT_SETTINGS}" \
                 allow: keep("allow"),
                 ask: keep("ask"),
                 deny: keep("deny"),
-                defaultMode: (
-                    if $mode == "" then
-                        ($current.permissions.defaultMode // $defaults.permissions.defaultMode)
-                    else $mode end
-                )
+                defaultMode: $mode
             }
         }
     ' "${CLAUDE_PERSISTENT_PATH}/settings.json" "${CLAUDE_DEFAULT_SETTINGS}" "${stale}" 2> /dev/null) \

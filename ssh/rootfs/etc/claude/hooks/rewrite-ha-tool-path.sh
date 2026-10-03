@@ -31,12 +31,26 @@ command=$(printf '%s' "${input}" | jq -r '.tool_input.command // empty' 2> /dev/
 
 # Command position is the start of a line or the tail of a separator token
 # (`;` `&` `&&` `|` `||` `(` `$(`). sed is line-based, so `^` covers newlines.
-#   \1  separator            \2  leading whitespace
-#   \3  interpreter prefix   \5  path prefix
-#   \8  tool name            \9  .py suffix
+# The tool name must end the word (whitespace, `;` `&` `|` `)` or end of
+# line), so `ha-history-analysis.py` or `ha-state_dump.py` stay untouched.
+# Each pattern drops a non-empty part (path, interpreter or .py), so the `ta`
+# loop ends. It rewrites one call per pass instead of using /g, because /g
+# would consume the `;` in `./ha-trace;./ha-state` as the first call's word
+# end and miss the second call.
+#   path, optional interpreter:  \1 separator \2 space \6 tool \8 word end
+#   interpreter, no path:        \1 separator \2 space \4 tool \6 word end
+#   bare name with .py:          \1 separator \2 space \3 tool \4 word end
+readonly START='(^|[;&|(])([[:space:]]*)'
+readonly END='([[:space:];&|)]|$)'
 rewritten=$(
     printf '%s' "${command}" | sed -E \
-        "s#(^|[;&|(])([[:space:]]*)((python3?|bash|sh)[[:space:]]+)?((\.{0,2}/)([A-Za-z0-9_.-]+/)*\.?)?(${TOOLS})(\.py)?#\1\2\8#g"
+        -e ':a' \
+        -e "s#${START}((python3?|bash|sh)[[:space:]]+)?\.{0,2}/([A-Za-z0-9_.-]+/)*(${TOOLS})(\.py)?${END}#\1\2\6\8#" \
+        -e 'ta' \
+        -e "s#${START}(python3?|bash|sh)[[:space:]]+(${TOOLS})(\.py)?${END}#\1\2\4\6#" \
+        -e 'ta' \
+        -e "s#${START}(${TOOLS})\.py${END}#\1\2\3\4#" \
+        -e 'ta'
 )
 
 [[ ${rewritten} == "${command}" ]] && exit 0

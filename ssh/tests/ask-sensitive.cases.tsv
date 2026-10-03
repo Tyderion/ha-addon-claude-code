@@ -68,3 +68,29 @@ ask	if true; then ha-integrations delete hue; fi
 ask	xargs -n1 ha-entities rename < /tmp/pairs
 pass	for e in sh1 sh2; do ha-integrations delete "$e" --dry-run; done
 pass	ha-integrations list --format json | jq -r '.entries[] | select(.state == "setup_error") | .title'
+# sort -o in a flag cluster, yq -i and uniq's output operand write; comments are not flags
+ask	sort -uo /homeassistant/.storage/x /homeassistant/.storage/x
+ask	sort --output=/homeassistant/.storage/x /tmp/x
+ask	yq -i '.a = 1' /homeassistant/.storage/core.entity_registry
+ask	uniq /tmp/a /homeassistant/.storage/lovelace
+pass	uniq -c /homeassistant/.storage/core.entity_registry
+pass	sort -u /homeassistant/.storage/core.entity_registry
+ask	ha-integrations delete hue # --dry-run
+ask	ha-entities rename light.a light.b  # --dry-run later
+pass	ha-entities rename light.a light.b \# --dry-run
+pass	ha-integrations delete hue --dry-run # check first
+pass	ha-integrations delete hue '#' --dry-run
+pass	ha-integrations delete hue a#b --dry-run
+pass	ha-integrations delete hue "#" --dry-run
+# fd duplications are not commands; &> and >&FILE still name their target
+pass	jq . /homeassistant/.storage/core.entity_registry 2>&1 | head
+pass	ls -la /homeassistant/.storage/ 2>&1
+pass	cat /homeassistant/.storage/x >&2
+pass	cat /homeassistant/.storage/x 2>&1 & ls /tmp
+ask	jq . /tmp/x &> /homeassistant/.storage/x
+ask	echo x > /homeassistant/.storage/x 2>&1
+ask	cat /homeassistant/.storage/x >&2 & rm /homeassistant/.storage/y
+ask	ls /homeassistant/.storage 2>&1 && rm /homeassistant/.storage/y
+# reads the destructive guard lets through still ask here: sed and cp are not read-only
+ask	sed -n '1,40p' /homeassistant/.storage/core.config_entries
+ask	cp /homeassistant/.storage/lovelace.x /tmp/backup.json

@@ -50,6 +50,7 @@ entry back too. A read-back mismatch exits 1.
 
 import argparse
 import datetime
+import functools
 import json
 import os
 import re
@@ -59,7 +60,15 @@ import time
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from ha_lib import HAHTTPError, HATimeout, ha_http, ha_result
+from ha_lib import (
+    FORMAT_PARENT,
+    HAHTTPError,
+    HATimeout,
+    ha_http,
+    ha_result,
+    print_output,
+    run_cli,
+)
 
 HA_CONFIG = "/homeassistant"
 SECRETS_FILE = os.path.join(HA_CONFIG, "secrets.yaml")
@@ -79,18 +88,6 @@ PROGRESS_TIMEOUT = 120
 PROGRESS_POLL = 2
 # Submitting a step can mean Home Assistant connecting to a device first
 SUBMIT_TIMEOUT = 180
-
-
-def print_output(data, fmt):
-    if fmt == "json":
-        print(json.dumps(data, indent=2, default=str))
-    else:
-        print(
-            yaml.safe_dump(
-                data, sort_keys=False, allow_unicode=True, default_flow_style=False
-            ),
-            end="",
-        )
 
 
 # ── entries ─────────────────────────────────────────────────────────────────
@@ -190,31 +187,35 @@ def iso(ts):
 
 # ── translations ────────────────────────────────────────────────────────────
 
-_translations = {}
+
+@functools.cache
+def _resources(domain, category):
+    """English translation resources for one integration and category.
+
+    Fetched once per domain and category. Labels are a convenience: when the
+    lookup fails the result is empty and the output carries field names only.
+    """
+    try:
+        result = ha_result(
+            {
+                "type": "frontend/get_translations",
+                "language": "en",
+                "category": category,
+                "integration": [domain],
+            }
+        )
+        return (result or {}).get("resources") or {}
+    except RuntimeError:
+        return {}
 
 
 def translator(domain, category):
     """Return t(path) looking up component.<domain>.<category>.<path> in English.
 
-    Labels are a convenience: when the lookup fails, t() returns None and the
-    output simply carries field names only. Resources are fetched once per
-    domain and category.
+    When the lookup fails, t() returns None and the output simply carries field
+    names only.
     """
-    if (domain, category) not in _translations:
-        try:
-            result = ha_result(
-                {
-                    "type": "frontend/get_translations",
-                    "language": "en",
-                    "category": category,
-                    "integration": [domain],
-                }
-            )
-            resources = (result or {}).get("resources") or {}
-        except RuntimeError:
-            resources = {}
-        _translations[(domain, category)] = resources
-    resources = _translations[(domain, category)]
+    resources = _resources(domain, category)
     prefix = f"component.{domain}.{category}."
 
     def t(path, placeholders=None):
@@ -338,6 +339,7 @@ def render_errors(errors, t):
 # ── step input ──────────────────────────────────────────────────────────────
 
 
+@functools.cache
 def load_secrets():
     try:
         with open(SECRETS_FILE, encoding="utf-8") as f:
@@ -347,25 +349,23 @@ def load_secrets():
     return data if isinstance(data, dict) else {}
 
 
-def resolve_secrets(value, secrets):
+def resolve_secrets(value):
     """Return (value to send, value to print) with !secret refs resolved.
 
-    The printable copy keeps the "!secret NAME" text. `secrets` is a one-item
-    list holding the loaded secrets.yaml (or None until the first reference),
-    so the file is read only when needed.
+    The printable copy keeps the "!secret NAME" text. secrets.yaml is read
+    (once) only when a reference is found.
     """
     if isinstance(value, dict):
-        pairs = {k: resolve_secrets(v, secrets) for k, v in value.items()}
+        pairs = {k: resolve_secrets(v) for k, v in value.items()}
         return {k: p[0] for k, p in pairs.items()}, {k: p[1] for k, p in pairs.items()}
     if isinstance(value, list):
-        pairs = [resolve_secrets(v, secrets) for v in value]
+        pairs = [resolve_secrets(v) for v in value]
         return [p[0] for p in pairs], [p[1] for p in pairs]
     if isinstance(value, str) and (m := SECRET_REF_RE.match(value)):
-        if secrets[0] is None:
-            secrets[0] = load_secrets()
-        if m.group(1) not in secrets[0]:
+        secrets = load_secrets()
+        if m.group(1) not in secrets:
             raise RuntimeError(f"no '{m.group(1)}' in {SECRETS_FILE}")
-        return secrets[0][m.group(1)], value
+        return secrets[m.group(1)], value
     return value, value
 
 
@@ -573,7 +573,6 @@ def run_flow(flow, steps, t):
     (created or saved something); every other status leaves it open, and the
     caller's `with` block aborts it.
     """
-    secrets = [None]
     submitted = []
     forms = []  # (step result, flat explicit input, flat printable input)
     result = flow.start()
@@ -620,7 +619,7 @@ def run_flow(flow, steps, t):
                         step=render_step(result, t),
                     )
                 fields = result.get("data_schema")
-                explicit, shown = resolve_secrets(value, secrets)
+                explicit, shown = resolve_secrets(value)
                 payload, kept = fill_omitted(explicit, fields)
                 record = {"input": mask_input(shown, fields)}
                 if kept:
@@ -781,9 +780,10 @@ def flow_output(kind, target, status, details):
     return output
 
 
-def finish_flow(args, kind, flow_info, status, details, schema=False):
+def finish_flow(
+    args, kind, status, details, *, base, start_body, domain, entry, stamps, schema
+):
     """Report a flow run, reading back whatever Home Assistant saved."""
-    base, start_body, domain, entry, stamps = flow_info
     output = flow_output(kind, args.target, status, details)
     if entry:
         output["entry"] = summary(entry)
@@ -873,27 +873,27 @@ def finish_flow(args, kind, flow_info, status, details, schema=False):
         sys.exit(1)
 
 
-def start_flow_run(kind, target):
-    base, start_body, domain, entry = flow_target(kind, target)
+def cmd_flow(args):
+    """Run add/options/reconfigure; `schema` is the same run with nothing submitted."""
+    schema = args.command == "schema"
+    kind = args.flow if schema else args.command
+    base, start_body, domain, entry = flow_target(kind, args.target)
     stamps = entry_stamps(domain, entry)
     t = translator(domain, "options" if kind == "options" else "config")
-    return (base, start_body, domain, entry, stamps), t
-
-
-def cmd_flow(args):
-    kind = args.command
-    flow_info, t = start_flow_run(kind, args.target)
-    with Flow(flow_info[0], flow_info[1]) as flow:
-        status, details = run_flow(flow, args.step or [], t)
-    finish_flow(args, kind, flow_info, status, details)
-
-
-def cmd_schema(args):
-    kind = args.flow
-    flow_info, t = start_flow_run(kind, args.target)
-    with Flow(flow_info[0], flow_info[1]) as flow:
-        status, details = run_flow(flow, [], t)
-    finish_flow(args, kind, flow_info, status, details, schema=True)
+    with Flow(base, start_body) as flow:
+        status, details = run_flow(flow, [] if schema else args.step or [], t)
+    finish_flow(
+        args,
+        kind,
+        status,
+        details,
+        base=base,
+        start_body=start_body,
+        domain=domain,
+        entry=entry,
+        stamps=stamps,
+        schema=schema,
+    )
 
 
 # ── read-only commands ──────────────────────────────────────────────────────
@@ -1008,10 +1008,10 @@ def cmd_update(args):
     wanted = {}
     if args.title is not None:
         wanted["title"] = args.title
-    if args.polling or args.no_polling:
-        wanted["pref_disable_polling"] = bool(args.no_polling)
-    if args.new_entities or args.no_new_entities:
-        wanted["pref_disable_new_entities"] = bool(args.no_new_entities)
+    if args.polling is not None:
+        wanted["pref_disable_polling"] = not args.polling
+    if args.new_entities is not None:
+        wanted["pref_disable_new_entities"] = not args.new_entities
     if not wanted:
         raise RuntimeError("nothing to change: pass at least one of the update flags")
 
@@ -1166,13 +1166,6 @@ def cmd_delete(args):
 
 
 def main():
-    fmt_parent = argparse.ArgumentParser(add_help=False)
-    fmt_parent.add_argument(
-        "--format",
-        choices=["yaml", "json"],
-        default="yaml",
-        help="Output format (default: yaml)",
-    )
     step_parent = argparse.ArgumentParser(add_help=False)
     step_parent.add_argument(
         "--step",
@@ -1188,7 +1181,7 @@ def main():
     )
     sub = parser.add_subparsers(dest="command", metavar="command", required=True)
 
-    p = sub.add_parser("list", parents=[fmt_parent], help="List integration entries")
+    p = sub.add_parser("list", parents=[FORMAT_PARENT], help="List integration entries")
     p.add_argument("--domain", help="Only entries of this integration domain")
     p.add_argument("--search", metavar="TEXT", help="Substring of domain or title")
     p.add_argument("--state", help="Only entries in this state (e.g. loaded)")
@@ -1200,14 +1193,14 @@ def main():
     p.set_defaults(func=cmd_list)
 
     p = sub.add_parser(
-        "show", parents=[fmt_parent], help="One entry with its devices and entities"
+        "show", parents=[FORMAT_PARENT], help="One entry with its devices and entities"
     )
     p.add_argument("entry")
     p.set_defaults(func=cmd_show)
 
     p = sub.add_parser(
         "handlers",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="Domains that can be added with a config flow",
     )
     p.add_argument("--search", metavar="TEXT")
@@ -1216,51 +1209,51 @@ def main():
 
     p = sub.add_parser(
         "discovered",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="Discovered devices and flows waiting to be set up",
     )
     p.set_defaults(func=cmd_discovered)
 
     p = sub.add_parser(
         "schema",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="Show a flow's first step without submitting anything",
     )
     p.add_argument("flow", choices=["add", "options", "reconfigure"])
     p.add_argument("target", metavar="domain|entry")
-    p.set_defaults(func=cmd_schema)
+    p.set_defaults(func=cmd_flow)
 
     for name, target, text in (
         ("add", "domain", "Set up a new integration entry through its config flow"),
         ("options", "entry", "Change an entry's options through its options flow"),
         ("reconfigure", "entry", "Change an entry's setup data (host, credentials)"),
     ):
-        p = sub.add_parser(name, parents=[fmt_parent, step_parent], help=text)
+        p = sub.add_parser(name, parents=[FORMAT_PARENT, step_parent], help=text)
         p.add_argument("target", metavar=target)
         p.set_defaults(func=cmd_flow)
 
     p = sub.add_parser(
         "update",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="Rename an entry or change its polling / new-entity preferences",
     )
     p.add_argument("entry")
     p.add_argument("--title", help="New title")
-    polling = p.add_mutually_exclusive_group()
-    polling.add_argument("--polling", action="store_true", help="Enable polling")
-    polling.add_argument("--no-polling", action="store_true", help="Disable polling")
-    new = p.add_mutually_exclusive_group()
-    new.add_argument(
-        "--new-entities", action="store_true", help="Add new entities enabled"
+    p.add_argument(
+        "--polling",
+        action=argparse.BooleanOptionalAction,
+        help="Enable/disable polling",
     )
-    new.add_argument(
-        "--no-new-entities", action="store_true", help="Add new entities disabled"
+    p.add_argument(
+        "--new-entities",
+        action=argparse.BooleanOptionalAction,
+        help="Add new entities enabled/disabled",
     )
     p.add_argument("--dry-run", action="store_true", help="Show without applying")
     p.set_defaults(func=cmd_update)
 
     p = sub.add_parser(
-        "disable", parents=[fmt_parent], help="Disable an entry (unloads it)"
+        "disable", parents=[FORMAT_PARENT], help="Disable an entry (unloads it)"
     )
     p.add_argument("entry")
     p.add_argument(
@@ -1268,17 +1261,19 @@ def main():
     )
     p.set_defaults(func=cmd_disable)
 
-    p = sub.add_parser("enable", parents=[fmt_parent], help="Enable a disabled entry")
+    p = sub.add_parser(
+        "enable", parents=[FORMAT_PARENT], help="Enable a disabled entry"
+    )
     p.add_argument("entry")
     p.set_defaults(func=cmd_enable)
 
-    p = sub.add_parser("reload", parents=[fmt_parent], help="Reload an entry")
+    p = sub.add_parser("reload", parents=[FORMAT_PARENT], help="Reload an entry")
     p.add_argument("entry")
     p.set_defaults(func=cmd_reload)
 
     p = sub.add_parser(
         "delete",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="Delete an entry with its devices and entities",
     )
     p.add_argument("entry")
@@ -1287,19 +1282,7 @@ def main():
     )
     p.set_defaults(func=cmd_delete)
 
-    args = parser.parse_args()
-
-    try:
-        args.func(args)
-    except (RuntimeError, OSError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-    except (KeyError, TypeError) as e:
-        print(
-            f"Error: unexpected reply from Home Assistant ({type(e).__name__}: {e})",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    run_cli(parser, (KeyError, TypeError))
 
 
 if __name__ == "__main__":

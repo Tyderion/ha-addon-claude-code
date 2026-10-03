@@ -1,6 +1,34 @@
 #!/command/with-contenv bashio
+# shellcheck shell=bash
 # ==============================================================================
 # Home Assistant Community App: Advanced SSH & Web Terminal
-# This script overrides the shutdown command to shutdown the host machine.
+# This script overrides the shutdown command to shut down or reboot the host
+# machine through the Supervisor, which only knows "now".
+#
+# Accepted arguments, in any order:
+#   -r, --reboot         reboot the host instead (wins over the others)
+#   -h, -P, --poweroff   shut the host down (the default)
+#   now, +0              immediately
+# Anything else (a delay such as +5 or 22:00, a wall message, -c, -k, ...)
+# prints an error and exits 1 without acting: running a delayed, cancelled or
+# warning-only shutdown as an immediate one would be worse than refusing.
 # ==============================================================================
-bashio::host.shutdown
+action=shutdown
+for arg in "$@"; do
+    case "${arg}" in
+        -r | --reboot) action=reboot ;;
+        -h | -P | --poweroff | now | +0) ;;
+        *)
+            echo "shutdown: unsupported argument '${arg}'." \
+                "Only an immediate host shutdown (shutdown [-h|-P] [now])" \
+                "or reboot (shutdown -r [now]) is supported." >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ ${action} == reboot ]]; then
+    bashio::host.reboot
+else
+    bashio::host.shutdown
+fi

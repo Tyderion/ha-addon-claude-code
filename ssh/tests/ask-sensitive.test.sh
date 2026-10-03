@@ -17,35 +17,23 @@ readonly HERE
 readonly HOOK="${HERE}/../rootfs/etc/claude/hooks/ask-sensitive.sh"
 readonly CASES="${HERE}/ask-sensitive.cases.tsv"
 
-failures=0
-total=0
-
-check() {
-    local expect=$1 label=$2 payload=$3 out rc got
-    total=$((total + 1))
-    out=$(printf '%s' "${payload}" | bash "${HOOK}" 2> /dev/null)
-    rc=$?
-    got=pass
+# Silent exit 0 is "pass"; otherwise the hook's permissionDecision
+classify() {
+    local rc=$1 out=$2 got=pass
     if [[ -n ${out} ]]; then
         got=$(printf '%s' "${out}" | jq -r '.hookSpecificOutput.permissionDecision // "invalid"' 2> /dev/null)
     fi
     [[ ${rc} -ne 0 ]] && got="exit-${rc}"
-    if [[ ${got} == "${expect}" ]]; then
-        printf 'ok    %-6s %s\n' "${got}" "${label}"
-    else
-        printf 'FAIL  want=%-6s got=%-6s %s\n' "${expect}" "${got}" "${label}"
-        failures=$((failures + 1))
-    fi
+    echo "${got}"
 }
 
-while IFS=$'\t' read -r expect cmd; do
-    [[ -z ${expect} || ${expect} == \#* ]] && continue
-    check "${expect}" "${cmd}" "$(jq -nc --arg c "${cmd}" '{tool_name:"Bash",tool_input:{command:$c}}')"
-done < "${CASES}"
+# shellcheck source=hook-table.sh
+source "${HERE}/hook-table.sh"
+
+run_table
 
 check pass '[Edit] /homeassistant/secrets.yaml' \
-    "$(jq -nc '{tool_name:"Edit",tool_input:{file_path:"/homeassistant/secrets.yaml"}}')"
+    "$(edit_payload /homeassistant/secrets.yaml)"
 check pass '[unparseable stdin fails open]' 'not json'
 
-printf '\n%d/%d passed\n' "$((total - failures))" "${total}"
-exit $((failures > 0))
+finish

@@ -9,6 +9,8 @@ Public API:
     ha_result(command: dict) -> the command's unwrapped "result"
     ha_subscribe(command: dict) -> generator of event payloads
     ha_http(method: str, path: str, body=None) -> decoded JSON reply
+    print_output(data, fmt), FORMAT_PARENT, run_cli(parser, extra_errors=())
+    json_or_str(value), parse_pairs(pairs, flag) -> dict
 
 All helpers raise RuntimeError when HA reports failure; ha_http raises its
 subclass HAHTTPError, which carries the status and the decoded reply body,
@@ -17,6 +19,7 @@ Some APIs (config flows, config entry reload/remove) exist only as REST
 views, which is what ha_http is for.
 """
 
+import argparse
 import atexit
 import base64
 import json
@@ -28,9 +31,15 @@ import time
 import urllib.error
 import urllib.request
 
+import yaml
+
 HA_HOST = "localhost"
 HA_PORT = 8123
 TOKEN_FILE = "/homeassistant/.claude/ha_token"
+# Socket timeout for connecting, the handshake and auth. It is also the resting
+# timeout between calls, which paces ha_subscribe's idle liveness pings;
+# ha_call and ha_subscribe narrow it to their own deadline while they wait.
+SOCKET_TIMEOUT = 30.0
 
 # Module-level singleton state
 _ws = None
@@ -63,7 +72,9 @@ class WS:
     """
 
     def __init__(self):
-        self._sock = socket.create_connection((HA_HOST, HA_PORT), timeout=30)
+        self._sock = socket.create_connection(
+            (HA_HOST, HA_PORT), timeout=SOCKET_TIMEOUT
+        )
         self._buf = b""
         self._handshake()
 
@@ -158,6 +169,9 @@ class WS:
     def send(self, data: dict):
         self._send_frame(0x1, json.dumps(data).encode())
 
+    def settimeout(self, seconds: float):
+        self._sock.settimeout(seconds)
+
     def close(self):
         try:
             self._send_frame(0x8, struct.pack(">H", 1000))  # clean close, code 1000
@@ -201,6 +215,51 @@ def _cleanup():
         _ws = None
 
 
+def _send(command: dict) -> int:
+    """Send a command on the singleton connection and return its message id."""
+    global _msg_id
+
+    _ensure_connection()
+    _msg_id += 1
+    _ws.send({**command, "id": _msg_id})
+    return _msg_id
+
+
+def _raise_on_failure(msg: dict, command: dict):
+    """Raise RuntimeError with HA's error detail if `msg` reports success: false."""
+    if msg.get("success") is not False:
+        return
+    error = msg.get("error", {})
+    if isinstance(error, dict):
+        code = f" ({error['code']})" if error.get("code") else ""
+        detail = f"{error.get('message', 'unknown error')}{code}"
+    else:
+        detail = str(error)
+    raise RuntimeError(f"'{command.get('type')}' failed: {detail}")
+
+
+def _recv_until(deadline: float, what: str) -> dict:
+    """Receive one message, raising RuntimeError once `deadline` has passed.
+
+    `deadline` is a time.monotonic() value. The socket waits only for the
+    time that is left (at least 0.1 s), then goes back to SOCKET_TIMEOUT.
+    A socket timeout may strike mid-frame, leaving the stream unreadable, so
+    it also drops the connection; the next call opens a fresh one.
+    """
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise RuntimeError(f"Timed out waiting for {what}")
+    _ws.settimeout(max(remaining, 0.1))
+    try:
+        return _ws.recv()
+    except socket.timeout:
+        _cleanup()
+        raise RuntimeError(f"Timed out waiting for {what}") from None
+    finally:
+        if _ws is not None:
+            _ws.settimeout(SOCKET_TIMEOUT)
+
+
 def ha_call(command: dict, timeout: float = 60.0) -> dict:
     """Send a command over the singleton WebSocket and return the response.
 
@@ -211,36 +270,15 @@ def ha_call(command: dict, timeout: float = 60.0) -> dict:
     Raises RuntimeError if HA reports the command failed (success: false)
     or no response arrives within `timeout` seconds.
     """
-    global _msg_id
-
-    _ensure_connection()
-
-    _msg_id += 1
-    _ws.send({**command, "id": _msg_id})
+    msg_id = _send(command)
 
     # Read until we get the response matching our ID
     deadline = time.monotonic() + timeout
     while True:
-        if time.monotonic() > deadline:
-            raise RuntimeError(
-                f"Timed out waiting for response to '{command.get('type')}'"
-            )
-        try:
-            msg = _ws.recv()
-        except socket.timeout:
-            raise RuntimeError(
-                f"Timed out waiting for response to '{command.get('type')}'"
-            ) from None
-        if msg.get("id") != _msg_id:
+        msg = _recv_until(deadline, f"response to '{command.get('type')}'")
+        if msg.get("id") != msg_id:
             continue
-        if msg.get("success") is False:
-            error = msg.get("error", {})
-            if isinstance(error, dict):
-                code = f" ({error['code']})" if error.get("code") else ""
-                detail = f"{error.get('message', 'unknown error')}{code}"
-            else:
-                detail = str(error)
-            raise RuntimeError(f"'{command.get('type')}' failed: {detail}")
+        _raise_on_failure(msg, command)
         return msg
 
 
@@ -255,45 +293,30 @@ def ha_subscribe(command: dict, timeout: float = 60.0):
     Consumes the success acknowledgement first (raising RuntimeError on
     failure), then yields the "event" payload of every matching event message.
     `timeout` bounds the wait for the ack and the first event; after that the
-    stream is unbounded — idle socket timeouts trigger a WebSocket ping so a
-    dead connection is detected instead of blocking forever.
+    stream is unbounded — every SOCKET_TIMEOUT of silence triggers a
+    WebSocket ping so a dead connection is detected instead of blocking
+    forever.
 
     The subscription is never cancelled; intended for CLI processes that exit
     (and close the connection) when done.
     """
-    global _msg_id
-
-    _ensure_connection()
-
-    _msg_id += 1
-    sub_id = _msg_id
-    _ws.send({**command, "id": sub_id})
+    sub_id = _send(command)
 
     deadline = time.monotonic() + timeout
     got_event = False
     while True:
-        if not got_event and time.monotonic() > deadline:
-            raise RuntimeError(f"Timed out waiting for '{command.get('type')}'")
-        try:
-            msg = _ws.recv()
-        except socket.timeout:
-            if not got_event:
-                raise RuntimeError(
-                    f"Timed out waiting for '{command.get('type')}'"
-                ) from None
-            _ws._send_frame(0x9, b"keepalive")  # liveness probe; pong is swallowed
-            continue
+        if not got_event:
+            msg = _recv_until(deadline, f"'{command.get('type')}'")
+        else:
+            try:
+                msg = _ws.recv()
+            except socket.timeout:
+                _ws._send_frame(0x9, b"keepalive")  # liveness probe; pong is swallowed
+                continue
         if msg.get("id") != sub_id:
             continue
         if msg.get("type") == "result":
-            if msg.get("success") is False:
-                error = msg.get("error", {})
-                if isinstance(error, dict):
-                    code = f" ({error['code']})" if error.get("code") else ""
-                    detail = f"{error.get('message', 'unknown error')}{code}"
-                else:
-                    detail = str(error)
-                raise RuntimeError(f"'{command.get('type')}' failed: {detail}")
+            _raise_on_failure(msg, command)
             continue
         if msg.get("type") == "event":
             got_event = True
@@ -366,3 +389,68 @@ def ha_http(method: str, path: str, body=None, timeout: float = 60.0):
         raise RuntimeError(
             f"cannot reach Home Assistant at {HA_HOST}:{HA_PORT}: {reason}"
         ) from None
+
+
+# --- Shared CLI scaffolding ---
+
+
+def print_output(data, fmt):
+    """Print `data` as JSON (fmt == "json") or YAML."""
+    if fmt == "json":
+        print(json.dumps(data, indent=2, default=str))
+    else:
+        print(
+            yaml.safe_dump(
+                data, sort_keys=False, allow_unicode=True, default_flow_style=False
+            ),
+            end="",
+        )
+
+
+# argparse parent giving a subcommand its --format option
+FORMAT_PARENT = argparse.ArgumentParser(add_help=False)
+FORMAT_PARENT.add_argument(
+    "--format",
+    choices=["yaml", "json"],
+    default="yaml",
+    help="Output format (default: yaml)",
+)
+
+
+def run_cli(parser, extra_errors=()):
+    """Parse args, run the subcommand's `func`, and turn failures into exit 1.
+
+    `extra_errors` are exceptions that mean Home Assistant sent a reply of an
+    unexpected shape (e.g. KeyError, TypeError); they get that wording.
+    """
+    args = parser.parse_args()
+    try:
+        args.func(args)
+    except (RuntimeError, OSError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except extra_errors as e:
+        print(
+            f"Error: unexpected reply from Home Assistant ({type(e).__name__}: {e})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def json_or_str(value: str):
+    """Parse `value` as JSON, falling back to the raw string."""
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
+def parse_pairs(pairs, flag: str) -> dict:
+    """Turn repeated KEY=VALUE options into a dict; values are JSON when possible."""
+    result = {}
+    for pair in pairs or []:
+        key, sep, value = pair.partition("=")
+        if not sep or not key:
+            raise RuntimeError(f"{flag} expects KEY=VALUE, got '{pair}'")
+        result[key] = json_or_str(value)
+    return result

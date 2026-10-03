@@ -45,9 +45,13 @@ jobs:
         run: bash ssh/tests/guard-destructive.test.sh
       - name: 🚀 Run sensitive-path hook tests
         run: bash ssh/tests/ask-sensitive.test.sh
+      - name: 🚀 Run tool-path rewrite hook tests
+        run: bash ssh/tests/rewrite-tool-path.test.sh
       - name: 🚀 Run claude wrapper tests
         run: bash ssh/tests/claude-wrapper.test.sh
       - name: 🚀 Run Python tool tests
         run: |
           python3 ssh/tests/test_ha_entities.py
           python3 ssh/tests/test_ha_integrations.py
+          python3 ssh/tests/test_ha_lib.py
+          python3 ssh/tests/test_ha_history.py

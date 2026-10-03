@@ -20,6 +20,8 @@ import os
 import sys
 from collections.abc import Hashable
 
+import yaml
+
 # Roots whose YAML is loaded by Home Assistant itself. Edits elsewhere
 # (/share scratch files, add-on configs) are none of this hook's business.
 WATCHED_ROOTS = ("/homeassistant", "/config")
@@ -63,31 +65,30 @@ def _target_path(payload: dict) -> str | None:
     return path
 
 
-def _build_loader(yaml):
+class HomeAssistantLoader(yaml.SafeLoader):
     """SafeLoader that ignores HA tags and rejects duplicate keys."""
 
-    class HomeAssistantLoader(yaml.SafeLoader):
-        def construct_mapping(self, node, deep=False):
-            seen: set = set()
-            for key_node, _value_node in node.value:
-                key = self.construct_object(key_node, deep=deep)
-                if not isinstance(key, Hashable):
-                    continue
-                if key in seen:
-                    raise yaml.constructor.ConstructorError(
-                        "while constructing a mapping",
-                        node.start_mark,
-                        f"found duplicate key {key!r} - the later one wins and "
-                        "the earlier block is silently discarded",
-                        key_node.start_mark,
-                    )
-                seen.add(key)
-            return super().construct_mapping(node, deep)
+    def construct_mapping(self, node, deep=False):
+        seen: set = set()
+        for key_node, _value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if not isinstance(key, Hashable):
+                continue
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"found duplicate key {key!r} - the later one wins and "
+                    "the earlier block is silently discarded",
+                    key_node.start_mark,
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep)
 
-    # Every HA tag starts with "!" - swallow them all rather than keeping a
-    # list that goes stale as integrations add their own.
-    HomeAssistantLoader.add_multi_constructor("!", lambda *_args: None)
-    return HomeAssistantLoader
+
+# Every HA tag starts with "!" - swallow them all rather than keeping a
+# list that goes stale as integrations add their own.
+HomeAssistantLoader.add_multi_constructor("!", lambda *_args: None)
 
 
 def main() -> int:
@@ -97,14 +98,8 @@ def main() -> int:
         return 0
 
     try:
-        import yaml
-    except ImportError:
-        return 0
-
-    loader = _build_loader(yaml)
-    try:
         with open(path, encoding="utf-8") as handle:
-            for _document in yaml.load_all(handle, Loader=loader):
+            for _document in yaml.load_all(handle, Loader=HomeAssistantLoader):
                 pass
     except UnicodeDecodeError:
         return 0

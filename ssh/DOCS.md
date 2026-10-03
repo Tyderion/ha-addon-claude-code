@@ -417,9 +417,9 @@ Explicit rules still exist and still take precedence:
   subcommands, and `curl` GETs to `http://supervisor/*`
 
 **Always asks first**, in every mode except `bypassPermissions`:
-`ha core restart/stop/update`, `ha host reboot/shutdown`,
-`ha backup restore`, `ha addons uninstall/stop`, `ha os update`,
-`ha supervisor update`, `curl` POSTs to the Supervisor API (which can call
+`ha core restart/stop/update`, `ha host reboot/shutdown`, the shell's
+`reboot`, `shutdown`, `poweroff` and `halt`, `ha backup restore`,
+`ha addons uninstall/stop`, `ha os update`, `ha supervisor update`, `curl` POSTs to the Supervisor API (which can call
 any service, restart Core, or restore a backup), and reading or writing
 `secrets.yaml`. For `secrets.yaml` a hook also covers shell commands that name
 the file, since the `ask` rules only apply to Claude's file tools and auto
@@ -430,7 +430,7 @@ that reaches the file without naming it, such as `grep -r` over
 **Denied outright**: edits to `/homeassistant/.storage/**`. That directory is
 Home Assistant's internal state; dashboards go through `ha-dashboard` and
 everything else through the UI. The same hook blocks the common shell writes
-into it (`tee`, `sed`, `cp`, `mv`, redirects). Any other shell command that
+into it (`tee`, `sed -i`, `cp` or `mv` into it, redirects). Any other shell command that
 names `.storage` asks first unless every part of it is a plain read (`cat`,
 `jq`, `rg`, `ls`, ...) with output going only to `/tmp`, so a python script,
 an `rm` or a `cd .storage && ...` never touches it without your say-so.

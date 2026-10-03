@@ -17,28 +17,18 @@ All commands accept --format yaml|json (default: yaml).
 """
 
 import argparse
-import json
 import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
 
-import yaml
-
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from ha_lib import ha_result
-
-
-def print_output(data, fmt):
-    if fmt == "json":
-        print(json.dumps(data, indent=2, default=str))
-    else:
-        print(
-            yaml.safe_dump(
-                data, sort_keys=False, allow_unicode=True, default_flow_style=False
-            ),
-            end="",
-        )
+from ha_lib import (
+    FORMAT_PARENT,
+    ha_result,
+    print_output,
+    run_cli,
+)
 
 
 def humanize(seconds):
@@ -58,21 +48,23 @@ def local_iso(ts):
     return datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().isoformat()
 
 
+def parse_iso(value):
+    """ISO date/datetime -> aware datetime (local time if it has no offset)."""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as e:
+        raise RuntimeError(e) from None
+    return parsed if parsed.tzinfo else parsed.astimezone()
+
+
 def parse_window(args, default_last):
     """Resolve --last / --from / --to into aware (start, end) datetimes."""
     if args.last and args.from_:
-        raise RuntimeError("use either --last or --from/--to, not both")
+        raise RuntimeError("use either --last or --from, not both")
 
-    now = datetime.now(timezone.utc)
+    end = parse_iso(args.to) if args.to else datetime.now(timezone.utc)
     if args.from_:
-        start = datetime.fromisoformat(args.from_)
-        if start.tzinfo is None:
-            start = start.astimezone()
-        end = now
-        if args.to:
-            end = datetime.fromisoformat(args.to)
-            if end.tzinfo is None:
-                end = end.astimezone()
+        start = parse_iso(args.from_)
     else:
         m = re.fullmatch(r"(\d+)([mhdw])", args.last or default_last)
         if not m:
@@ -86,7 +78,7 @@ def parse_window(args, default_last):
             "d": timedelta(days=amount),
             "w": timedelta(weeks=amount),
         }[unit]
-        start, end = now - delta, now
+        start = end - delta
 
     if start >= end:
         raise RuntimeError("window start must be before its end")
@@ -296,13 +288,6 @@ def cmd_stats_list(args):
 
 
 def main():
-    fmt_parent = argparse.ArgumentParser(add_help=False)
-    fmt_parent.add_argument(
-        "--format",
-        choices=["yaml", "json"],
-        default="yaml",
-        help="Output format (default: yaml)",
-    )
     window_parent = argparse.ArgumentParser(add_help=False)
     window_parent.add_argument(
         "--last",
@@ -318,7 +303,10 @@ def main():
         help="Window start (ISO date/datetime, local time if no offset)",
     )
     window_parent.add_argument(
-        "--to", default=None, metavar="ISO", help="Window end (default: now)"
+        "--to",
+        default=None,
+        metavar="ISO",
+        help="Window end (default: now); --last counts back from it",
     )
 
     parser = argparse.ArgumentParser(
@@ -329,7 +317,7 @@ def main():
 
     p_changes = sub.add_parser(
         "changes",
-        parents=[fmt_parent, window_parent],
+        parents=[FORMAT_PARENT, window_parent],
         help="State-change log with time-in-state summary (default: last 24h)",
     )
     p_changes.add_argument("entity_ids", nargs="+", metavar="entity_id")
@@ -343,7 +331,7 @@ def main():
 
     p_stats = sub.add_parser(
         "stats",
-        parents=[fmt_parent, window_parent],
+        parents=[FORMAT_PARENT, window_parent],
         help="Long-term statistics buckets (default: last 7d, daily)",
     )
     p_stats.add_argument("entity_ids", nargs="+", metavar="entity_id")
@@ -357,7 +345,7 @@ def main():
 
     p_slist = sub.add_parser(
         "stats-list",
-        parents=[fmt_parent],
+        parents=[FORMAT_PARENT],
         help="List entities that have long-term statistics",
     )
     p_slist.add_argument(
@@ -371,13 +359,7 @@ def main():
     )
     p_slist.set_defaults(func=cmd_stats_list)
 
-    args = parser.parse_args()
-
-    try:
-        args.func(args)
-    except (RuntimeError, OSError, ValueError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    run_cli(parser, (ValueError,))
 
 
 if __name__ == "__main__":

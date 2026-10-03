@@ -33,7 +33,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from ha_lib import ha_result
+from ha_lib import ha_result, run_cli
 
 
 def _dashboard_id(url_path: str) -> str:
@@ -49,7 +49,7 @@ def _dashboard_id(url_path: str) -> str:
 # --- Commands ---
 
 
-def cmd_list():
+def cmd_list(args):
     dashboards = ha_result({"type": "lovelace/dashboards/list"}) or []
     print(f"{'default':30s}  (main dashboard)")
     for d in dashboards:
@@ -58,10 +58,10 @@ def cmd_list():
         print(f"{d['url_path']:30s}  {d.get('title', '(no title)')}{sidebar}{admin}")
 
 
-def cmd_get(url_path: str):
+def cmd_get(args):
     cmd = {"type": "lovelace/config"}
-    if url_path != "default":
-        cmd["url_path"] = url_path
+    if args.url_path != "default":
+        cmd["url_path"] = args.url_path
     print(json.dumps(ha_result(cmd), indent=2))
 
 
@@ -70,28 +70,21 @@ def _validate_json(raw: str) -> dict:
     try:
         obj = json.loads(raw)
     except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError(f"Invalid JSON: {e}") from None
     if not isinstance(obj, dict) or not (
         isinstance(obj.get("views"), list) or isinstance(obj.get("strategy"), dict)
     ):
-        print(
-            "Error: dashboard config must be a JSON object with a 'views' list "
-            "(or a 'strategy' object)",
-            file=sys.stderr,
+        raise RuntimeError(
+            "dashboard config must be a JSON object with a 'views' list "
+            "(or a 'strategy' object)"
         )
-        sys.exit(1)
     return obj
 
 
-def cmd_set(url_path: str, file: str):
-    try:
-        with open(file) as f:
-            raw = f.read()
-    except OSError as e:
-        print(f"Error: cannot read {file}: {e}", file=sys.stderr)
-        sys.exit(1)
-    config = _validate_json(raw)
+def cmd_set(args):
+    url_path, file = args.url_path, args.file
+    with open(file) as f:
+        config = _validate_json(f.read())
     cmd = {"type": "lovelace/config/save", "config": config}
     if url_path != "default":
         cmd["url_path"] = url_path
@@ -99,81 +92,58 @@ def cmd_set(url_path: str, file: str):
     print(f"Dashboard '{url_path}' saved successfully.")
 
 
-def cmd_create(
-    url_path: str, title: str, icon: str, show_in_sidebar: bool, require_admin: bool
-):
+def cmd_create(args):
     d = ha_result(
         {
             "type": "lovelace/dashboards/create",
-            "url_path": url_path,
-            "title": title,
-            "icon": icon,
-            "show_in_sidebar": show_in_sidebar,
-            "require_admin": require_admin,
+            "url_path": args.url_path,
+            "title": args.title,
+            "icon": args.icon,
+            "show_in_sidebar": args.show_in_sidebar,
+            "require_admin": args.require_admin,
         }
     )
     print(f"Created dashboard '{d['title']}' (url_path: {d['url_path']})")
 
 
-def cmd_delete(url_path: str):
+def cmd_delete(args):
     ha_result(
         {
             "type": "lovelace/dashboards/delete",
-            "dashboard_id": _dashboard_id(url_path),
+            "dashboard_id": _dashboard_id(args.url_path),
         }
     )
-    print(f"Deleted dashboard '{url_path}'.")
+    print(f"Deleted dashboard '{args.url_path}'.")
 
 
-def cmd_update(url_path: str, title, icon, show_in_sidebar, require_admin):
-    if all(v is None for v in (title, icon, show_in_sidebar, require_admin)):
-        print(
-            "Error: no metadata flags given "
-            "(use --title/--icon/--show/--hidden/--admin/--no-admin)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    cmd = {
-        "type": "lovelace/dashboards/update",
-        "dashboard_id": _dashboard_id(url_path),
+UPDATE_FIELDS = ("title", "icon", "show_in_sidebar", "require_admin")
+
+
+def cmd_update(args):
+    fields = {
+        k: getattr(args, k) for k in UPDATE_FIELDS if getattr(args, k) is not None
     }
-    if title is not None:
-        cmd["title"] = title
-    if icon is not None:
-        cmd["icon"] = icon
-    if show_in_sidebar is not None:
-        cmd["show_in_sidebar"] = show_in_sidebar
-    if require_admin is not None:
-        cmd["require_admin"] = require_admin
-    d = ha_result(cmd)
+    if not fields:
+        raise RuntimeError(
+            "no metadata flags given "
+            "(use --title/--icon/--show/--hidden/--admin/--no-admin)"
+        )
+    d = ha_result(
+        {
+            "type": "lovelace/dashboards/update",
+            "dashboard_id": _dashboard_id(args.url_path),
+            **fields,
+        }
+    )
     print(f"Updated dashboard '{d['title']}' (url_path: {d['url_path']})")
 
 
 # --- Entry point ---
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        prog="ha-dashboard",
-        description="Manage Home Assistant Lovelace dashboards via WebSocket API.",
-    )
-    sub = parser.add_subparsers(dest="command", metavar="command")
-    sub.required = True
-
-    sub.add_parser("list", help="List all dashboards")
-
-    p_get = sub.add_parser("get", help="Print dashboard config JSON to stdout")
-    p_get.add_argument("url_path")
-
-    p_set = sub.add_parser("set", help="Save dashboard config from a JSON file")
-    p_set.add_argument("url_path")
-    p_set.add_argument("file", help="JSON file to read")
-
-    p_create = sub.add_parser("create", help="Create a new empty dashboard")
-    p_create.add_argument("url_path", help="URL slug, e.g. my-dashboard")
-    p_create.add_argument("title", help="Display name")
-    p_create.add_argument("--icon", default="mdi:view-dashboard", metavar="mdi:NAME")
-    sidebar = p_create.add_mutually_exclusive_group()
+def add_meta_flags(p, show_in_sidebar=None, require_admin=None):
+    """Add --hidden/--show and --admin/--no-admin; None defaults mean "unchanged"."""
+    sidebar = p.add_mutually_exclusive_group()
     sidebar.add_argument(
         "--hidden",
         dest="show_in_sidebar",
@@ -184,87 +154,56 @@ def main():
         "--show",
         dest="show_in_sidebar",
         action="store_true",
-        help="Show in sidebar (default)",
+        help="Show in sidebar" + (" (default)" if show_in_sidebar else ""),
     )
-    p_create.set_defaults(show_in_sidebar=True)
-    admin = p_create.add_mutually_exclusive_group()
-    admin.add_argument(
+    p.add_argument(
         "--admin",
         dest="require_admin",
-        action="store_true",
-        help="Require admin access",
+        action=argparse.BooleanOptionalAction,
+        help="Require admin access"
+        + (" (default: no)" if require_admin is False else ""),
     )
-    admin.add_argument(
-        "--no-admin",
-        dest="require_admin",
-        action="store_false",
-        help="No admin requirement (default)",
+    p.set_defaults(show_in_sidebar=show_in_sidebar, require_admin=require_admin)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="ha-dashboard",
+        description="Manage Home Assistant Lovelace dashboards via WebSocket API.",
     )
-    p_create.set_defaults(require_admin=False)
+    sub = parser.add_subparsers(dest="command", metavar="command")
+    sub.required = True
+
+    sub.add_parser("list", help="List all dashboards").set_defaults(func=cmd_list)
+
+    p_get = sub.add_parser("get", help="Print dashboard config JSON to stdout")
+    p_get.add_argument("url_path")
+    p_get.set_defaults(func=cmd_get)
+
+    p_set = sub.add_parser("set", help="Save dashboard config from a JSON file")
+    p_set.add_argument("url_path")
+    p_set.add_argument("file", help="JSON file to read")
+    p_set.set_defaults(func=cmd_set)
+
+    p_create = sub.add_parser("create", help="Create a new empty dashboard")
+    p_create.add_argument("url_path", help="URL slug, e.g. my-dashboard")
+    p_create.add_argument("title", help="Display name")
+    p_create.add_argument("--icon", default="mdi:view-dashboard", metavar="mdi:NAME")
+    add_meta_flags(p_create, show_in_sidebar=True, require_admin=False)
+    p_create.set_defaults(func=cmd_create)
 
     p_delete = sub.add_parser("delete", help="Delete a dashboard and its config")
     p_delete.add_argument("url_path")
+    p_delete.set_defaults(func=cmd_delete)
 
     p_update = sub.add_parser("update", help="Update dashboard metadata")
     p_update.add_argument("url_path")
     p_update.add_argument("--title", default=None)
     p_update.add_argument("--icon", default=None, metavar="mdi:NAME")
-    sidebar2 = p_update.add_mutually_exclusive_group()
-    sidebar2.add_argument(
-        "--hidden",
-        dest="show_in_sidebar",
-        action="store_false",
-        help="Hide from sidebar",
-    )
-    sidebar2.add_argument(
-        "--show", dest="show_in_sidebar", action="store_true", help="Show in sidebar"
-    )
-    p_update.set_defaults(show_in_sidebar=None)
-    admin2 = p_update.add_mutually_exclusive_group()
-    admin2.add_argument(
-        "--admin",
-        dest="require_admin",
-        action="store_true",
-        help="Require admin access",
-    )
-    admin2.add_argument(
-        "--no-admin",
-        dest="require_admin",
-        action="store_false",
-        help="No admin requirement",
-    )
-    p_update.set_defaults(require_admin=None)
+    add_meta_flags(p_update)
+    p_update.set_defaults(func=cmd_update)
 
-    args = parser.parse_args()
-
-    try:
-        if args.command == "list":
-            cmd_list()
-        elif args.command == "get":
-            cmd_get(args.url_path)
-        elif args.command == "set":
-            cmd_set(args.url_path, args.file)
-        elif args.command == "create":
-            cmd_create(
-                args.url_path,
-                args.title,
-                args.icon,
-                args.show_in_sidebar,
-                args.require_admin,
-            )
-        elif args.command == "delete":
-            cmd_delete(args.url_path)
-        elif args.command == "update":
-            cmd_update(
-                args.url_path,
-                args.title,
-                args.icon,
-                args.show_in_sidebar,
-                args.require_admin,
-            )
-    except (RuntimeError, OSError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    run_cli(parser)
 
 
 if __name__ == "__main__":

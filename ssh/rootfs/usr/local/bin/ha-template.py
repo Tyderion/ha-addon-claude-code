@@ -20,54 +20,28 @@ Accepts --format yaml|json (default: yaml).
 """
 
 import argparse
-import json
 import os
 import sys
 from datetime import datetime
 
-import yaml
-
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from ha_lib import ha_subscribe
-
-
-def print_output(data, fmt):
-    if fmt == "json":
-        print(json.dumps(data, indent=2, default=str))
-    else:
-        print(
-            yaml.safe_dump(
-                data, sort_keys=False, allow_unicode=True, default_flow_style=False
-            ),
-            end="",
-        )
-
-
-def parse_vars(pairs):
-    variables = {}
-    for pair in pairs or []:
-        key, sep, value = pair.partition("=")
-        if not sep or not key:
-            raise RuntimeError(f"--var expects KEY=VALUE, got '{pair}'")
-        try:
-            variables[key] = json.loads(value)
-        except json.JSONDecodeError:
-            variables[key] = value
-    return variables
+from ha_lib import (
+    FORMAT_PARENT,
+    ha_subscribe,
+    parse_pairs,
+    print_output,
+    run_cli,
+)
 
 
 def read_template(args):
-    if args.template is not None and args.file:
-        raise RuntimeError("pass the template inline OR via --file, not both")
     if args.template is not None:
         return args.template
-    if args.file:
-        try:
-            with open(args.file) as f:
-                return f.read()
-        except OSError as e:
-            raise RuntimeError(f"cannot read template file: {e}") from None
-    raise RuntimeError("no template given — pass it inline or via --file")
+    try:
+        with open(args.file) as f:
+            return f.read()
+    except OSError as e:
+        raise RuntimeError(f"cannot read template file: {e}") from None
 
 
 def _listeners(event):
@@ -100,7 +74,7 @@ def run(args):
         "template": template,
         "report_errors": True,
     }
-    variables = parse_vars(args.var)
+    variables = parse_pairs(args.var, "--var")
     if variables:
         command["variables"] = variables
     if args.timeout is not None:
@@ -132,12 +106,12 @@ def main():
     parser = argparse.ArgumentParser(
         prog="ha-template",
         description="Render a Jinja template against the live Home Assistant state.",
+        parents=[FORMAT_PARENT],
     )
-    parser.add_argument(
-        "template", nargs="?", default=None, help="Template string (inline)"
-    )
-    parser.add_argument(
-        "-f", "--file", default=None, metavar="FILE", help="Read the template from FILE"
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("template", nargs="?", help="Template string (inline)")
+    source.add_argument(
+        "-f", "--file", metavar="FILE", help="Read the template from FILE"
     )
     parser.add_argument(
         "--var",
@@ -157,20 +131,8 @@ def main():
         metavar="N",
         help="Render timeout in seconds (default: HA's own, 3s)",
     )
-    parser.add_argument(
-        "--format",
-        choices=["yaml", "json"],
-        default="yaml",
-        help="Output format (default: yaml)",
-    )
-
-    args = parser.parse_args()
-
-    try:
-        run(args)
-    except (RuntimeError, OSError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    parser.set_defaults(func=run)
+    run_cli(parser)
 
 
 if __name__ == "__main__":
