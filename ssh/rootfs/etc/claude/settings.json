@@ -55,7 +55,7 @@
       "This is a Home Assistant OS add-on container dedicated to editing one Home Assistant instance. It runs as root by design and holds Supervisor API credentials. The trust boundary is the container itself, not the individual shell command: any command that can reach the Supervisor API can already restart Core or read every secret, so nickel-and-diming individual binaries buys no safety.",
       "/homeassistant is the Home Assistant configuration directory (what HA itself calls /config). Reading, editing and writing YAML, Jinja templates, packages, custom_components and dashboards there is the entire point of this add-on and is routine work.",
       "/share, /addon_configs, /media, /ssl, /backup and /addons are mapped Home Assistant directories. Reading them is always routine; writing under /share and /addon_configs is routine.",
-      "The bundled ha-* CLI tools (ha-entities, ha-dashboard, ha-trace, ha-history, ha-template, ha-service, ha-state, ha-reload) are the sanctioned way to talk to Home Assistant. They are read-mostly, validated, and always safe to run.",
+      "The bundled ha-* CLI tools (ha-entities, ha-integrations, ha-dashboard, ha-trace, ha-history, ha-template, ha-service, ha-state, ha-reload) are the sanctioned way to talk to Home Assistant. They are read-mostly, validated, and always safe to run; the few that remove or unload something (ha-entities rename, ha-integrations delete and disable) ask the user through a hook.",
       "Ad-hoc python3 and bash are normal here: inspecting the recorder SQLite database, parsing YAML, computing statistics over history, and prototyping Jinja templates all happen through short throwaway scripts, including heredocs.",
       "Compound shell commands are the normal shape of investigation in this container: pipes through jq/rg/grep/sort/head, `cd <dir> && <command>`, and command substitution over the mapped directories are read-only plumbing and should be approved when the individual parts are themselves routine.",
       "Trusted local services: http://supervisor (the Supervisor API, authenticated by SUPERVISOR_TOKEN) and http://homeassistant.local:8123."
@@ -129,6 +129,7 @@
       "Bash(curl -s http://supervisor/:*)",
       "Bash(ha-reload)",
       "Bash(ha-entities:*)",
+      "Bash(ha-integrations:*)",
       "Bash(ha-dashboard:*)",
       "Bash(ha-trace:*)",
       "Bash(ha-history:*)",
@@ -198,6 +199,7 @@
     "deny": [
       "Edit(//homeassistant/.storage/**)",
       "Bash(./ha-entities:*)",
+      "Bash(./ha-integrations:*)",
       "Bash(./ha-dashboard:*)",
       "Bash(./ha-trace:*)",
       "Bash(./ha-history:*)",

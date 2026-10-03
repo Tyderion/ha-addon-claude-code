@@ -25,8 +25,9 @@ This is a Home Assistant configuration directory.
 
 ## CLI Tools
 
-All `ha-*` tools (`ha-entities`, `ha-dashboard`, `ha-trace`, `ha-history`,
-`ha-template`, `ha-service`, `ha-state`, `ha-reload`) are installed on
+All `ha-*` tools (`ha-entities`, `ha-integrations`, `ha-dashboard`,
+`ha-trace`, `ha-history`, `ha-template`, `ha-service`, `ha-state`,
+`ha-reload`) are installed on
 `PATH`. Invoke
 them by bare name exactly as shown below — never `./ha-entities` or any
 other path form. A path form is silently rewritten to the bare name before
@@ -64,6 +65,7 @@ The skills are the source of truth:
 | Setting helper/virtual state (booleans, selects, numbers, timers, counters) | `SetState` (`ha-state`) — validated and verified; raw service calls on these domains are refused |
 | Renaming an entity or device, moving it to an area, icon, hide/disable, changing an entity_id | `UpdateEntity` (`ha-entities update` / `rename`) — **never** edit `.storage/core.entity_registry` or `core.device_registry` |
 | What uses this entity or device? Is it safe to rename, remove or replace? | `EntityReferences` (`ha-entities refs`) — covers UI dashboards, helpers and device triggers that a grep misses |
+| Adding, configuring, renaming, reloading, disabling or removing an integration; which integrations are failing | `ManageIntegration` (`ha-integrations`) — **never** read or edit `.storage/core.config_entries` |
 | Anything touching dashboards, views, cards, badges | `EditDashboard` — **never** edit `.storage/lovelace.*` by hand |
 | Applying YAML changes | `HomeAssistantReload` (`ha-reload`) — prefers hot reload over restart |
 
@@ -85,7 +87,8 @@ Reloads all hot-reloadable YAML domains (see the HomeAssistantReload skill).
 ```bash
 ha core restart
 ```
-Only use for: new integrations, logger/recorder/http changes.
+Only use for: new YAML-configured integrations, logger/recorder/http
+changes. Integrations set up with `ha-integrations add` are live at once.
 
 ### Validate Configuration
 ```bash
@@ -166,6 +169,18 @@ API (see the UpdateEntity skill). Check what uses an entity first with
 `refs` (see the EntityReferences skill); `rename` lists the files that still
 use the old entity_id, and those need updating afterwards, since Home
 Assistant does not rewrite them.
+
+### Set Up or Change Integrations
+```bash
+ha-integrations list --failing
+ha-integrations schema options "Hue Bridge"
+ha-integrations options "Hue Bridge" --step '{"allow_hue_groups": true}'
+```
+Integrations are config entries, managed through Home Assistant's config
+entry API (see the ManageIntegration skill): look at a flow's fields with
+`schema`, then answer each step with `--step`. A stopped run saves nothing.
+`delete` and `disable` ask the user first; run them with `--dry-run` and
+check the affected entities with `ha-entities refs` before that.
 
 ### List Custom Components
 ```bash

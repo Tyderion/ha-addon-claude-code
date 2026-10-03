@@ -8,8 +8,13 @@ Public API:
     ha_call(command: dict) -> dict
     ha_result(command: dict) -> the command's unwrapped "result"
     ha_subscribe(command: dict) -> generator of event payloads
+    ha_http(method: str, path: str, body=None) -> decoded JSON reply
 
-All helpers raise RuntimeError when HA reports failure.
+All helpers raise RuntimeError when HA reports failure; ha_http raises its
+subclass HAHTTPError, which carries the status and the decoded reply body,
+and HATimeout when HA accepted the request but did not answer in time.
+Some APIs (config flows, config entry reload/remove) exist only as REST
+views, which is what ha_http is for.
 """
 
 import atexit
@@ -20,6 +25,8 @@ import socket
 import struct
 import sys
 import time
+import urllib.error
+import urllib.request
 
 HA_HOST = "localhost"
 HA_PORT = 8123
@@ -291,3 +298,71 @@ def ha_subscribe(command: dict, timeout: float = 60.0):
         if msg.get("type") == "event":
             got_event = True
             yield msg.get("event")
+
+
+class HAHTTPError(RuntimeError):
+    """A REST call answered with a non-2xx status.
+
+    `status` is the HTTP status and `body` the decoded reply (a dict for JSON
+    replies, else the text), so callers can read structured errors such as a
+    config flow's {"errors": {...}}.
+    """
+
+    def __init__(self, method: str, path: str, status: int, body):
+        self.status = status
+        self.body = body
+        detail = body.get("message") if isinstance(body, dict) else body
+        message = f"{method} {path} failed: HTTP {status}"
+        if detail:
+            message += f": {detail}"
+        if status == 401:
+            message += " (the token's user must be an administrator)"
+        super().__init__(message)
+
+
+class HATimeout(RuntimeError):
+    """A REST call got no answer in time; HA may still be processing it."""
+
+
+def _decode(raw: bytes):
+    text = raw.decode("utf-8", "replace").strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
+def ha_http(method: str, path: str, body=None, timeout: float = 60.0):
+    """Call Home Assistant's REST API and return the decoded JSON reply.
+
+    `path` starts with /api/. `body`, if given, is sent as JSON. Raises
+    HAHTTPError on a non-2xx status, HATimeout when the answer does not come
+    within `timeout`, and RuntimeError if HA is unreachable.
+    """
+    data = None if body is None else json.dumps(body).encode()
+    request = urllib.request.Request(
+        f"http://{HA_HOST}:{HA_PORT}{path}",
+        data=data,
+        method=method,
+        headers={
+            "Authorization": f"Bearer {get_token()}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return _decode(response.read())
+    except urllib.error.HTTPError as e:
+        raise HAHTTPError(method, path, e.code, _decode(e.read())) from None
+    except socket.timeout:
+        # The request went out; only the answer is missing
+        raise HATimeout(
+            f"{method} {path}: no answer from Home Assistant within {timeout:g}s"
+        ) from None
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", e)
+        raise RuntimeError(
+            f"cannot reach Home Assistant at {HA_HOST}:{HA_PORT}: {reason}"
+        ) from None

@@ -460,9 +460,11 @@ Four hooks ship with the app and are registered automatically in
   ask for, so they sit in the `ask` list instead.
 - **Sensitive-operation prompts** — a `PreToolUse` hook that makes Claude
   ask you first, in auto mode too, before a shell command that names
-  `secrets.yaml`, that could write into `.storage` (see above), or that
-  changes an entity_id with `ha-entities rename` (a `--dry-run`, which only
-  lists the references, runs without asking).
+  `secrets.yaml`, that could write into `.storage` (see above), that
+  changes an entity_id with `ha-entities rename`, or that deletes or
+  disables an integration with `ha-integrations delete` / `disable`. A
+  `--dry-run` of any of these, which only reports what would change, runs
+  without asking.
 - **Tool path rewriting** — Claude reaching for `./ha-entities`,
   `/usr/local/bin/ha-service` or `python3 ha-state.py` has the command
   rewritten to the bare PATH name before it runs. Without this, those forms
@@ -537,7 +539,8 @@ This is equivalent to Developer Tools → YAML → Quick Reload in the UI. It:
 
 Validate your changes first with `yamllint` (and `ha core check` for
 `configuration.yaml` changes). Use `ha core restart` only when adding new
-integrations or changing logger/recorder/http settings.
+YAML-configured integrations or changing logger/recorder/http settings;
+integrations set up through `ha-integrations add` are live at once.
 
 ### Built-in Skills
 
@@ -552,6 +555,13 @@ from what you ask; you can also invoke one directly, e.g.
 - `UpdateEntity` — rename entities and devices, move them to an area, set
   icons, hide or disable them, change entity_ids (`ha-entities update` /
   `rename`), all through the registry API instead of `.storage`.
+- `ManageIntegration` — list integrations and find failing ones, add new
+  ones, change their options or connection settings, rename, reload,
+  disable or delete them (`ha-integrations`), through the same config entry
+  API the UI uses. Config flows are answered step by step with labelled
+  fields; a run that stops part way aborts the flow and saves nothing.
+  Passwords are masked in the output, and `"!secret NAME"` values are read
+  from `secrets.yaml` without being shown to Claude.
 - `CallService` — look up a service's real fields and call it (`ha-service`).
 - `SetState` — set helpers, counters, timers and vars with validation and
   read-back (`ha-state`).

@@ -44,3 +44,27 @@ pass	ha-entities rename light.a light.b --dry-run
 pass	ha-entities rename --dry-run light.a light.b | head
 pass	ha-entities update light.a --name 'Kitchen Ceiling' --area Kitchen
 pass	ha-entities list --search rename
+# ha-integrations delete/disable ask unless it is a dry run; other subcommands pass
+ask	ha-integrations delete hue
+ask	ha-integrations disable 01J8ZK --format json
+ask	ha-integrations delete hue --dry-run && ha-integrations delete hue
+ask	python3 /usr/local/bin/ha-integrations.py delete hue
+ask	/usr/local/bin/ha-integrations disable hue
+ask	ha-integrations list | head; ha-integrations delete hue
+ask	python3 ha-entities.py rename light.a light.b
+pass	ha-integrations delete hue --dry-run
+pass	ha-integrations disable --dry-run hue
+pass	ha-integrations enable hue
+pass	ha-integrations options hue --step '{"allow_unreachable": true}'
+pass	ha-integrations list --search delete
+pass	ha-integrations show disable
+ask	for e in sh1 sh2; do ha-integrations delete "$e"; done
+ask	ha-integrations list --format json | jq -r '.entries[].entry_id' | xargs -n1 ha-integrations delete
+ask	bash -c "ha-integrations delete hue"
+ask	bash -c 'ha-integrations disable hue'
+ask	timeout 120 ha-integrations delete hue
+ask	exec ha-integrations disable hue
+ask	if true; then ha-integrations delete hue; fi
+ask	xargs -n1 ha-entities rename < /tmp/pairs
+pass	for e in sh1 sh2; do ha-integrations delete "$e" --dry-run; done
+pass	ha-integrations list --format json | jq -r '.entries[] | select(.state == "setup_error") | .title'

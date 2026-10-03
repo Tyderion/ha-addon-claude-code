@@ -101,7 +101,9 @@ Returns `{count, automations: [{entity_id, alias, state, mode, last_triggered}, 
 
 Changing names, areas, icons, visibility or entity_ids is the `update` and
 `rename` subcommands, covered by the UpdateEntity skill. Finding what uses
-an entity or device is `refs`, covered by the EntityReferences skill.
+an entity or device is `refs`, covered by the EntityReferences skill. The
+integration an entity comes from, and its setup and options, are
+`ha-integrations` (ManageIntegration skill).
 
 ## When to Use
 

@@ -19,9 +19,15 @@
 #                 before this by guard-destructive.sh.
 #   ha-entities rename
 #                 changing an entity_id breaks every automation, script and
-#                 dashboard that still uses the old one, so it asks unless
-#                 that command segment is a --dry-run (which only lists the
-#                 references). A permission rule could not tell the two apart.
+#                 dashboard that still uses the old one
+#   ha-integrations delete / disable
+#                 removing or unloading an integration takes its devices and
+#                 entities with it
+#                 Each asks unless that command segment is a --dry-run (which
+#                 only reports what would change). A permission rule could
+#                 not tell the two apart. The tool is found anywhere in a
+#                 segment, quotes removed, so loops, xargs, `timeout`,
+#                 `bash -c "..."` and path or python3 forms all count.
 #
 # A command that reaches a file without naming it (`grep -r password
 # /homeassistant`) is not caught; this closes the common paths, not every path.
@@ -138,19 +144,36 @@ if [[ ${cmd} == *secrets.yaml* ]]; then
     ask "This shell command touches secrets.yaml, which holds your Home Assistant credentials."
 fi
 
-[[ ${cmd} == *.storage* || ${cmd} == *ha-entities* ]] || exit 0
+[[ ${cmd} == *.storage* || ${cmd} == *ha-entities* || ${cmd} == *ha-integrations* ]] || exit 0
 shopt -s extglob
 bare=$(strip_single_quotes "${cmd}") \
-    || ask "This shell command could not be parsed, and it touches .storage or the entity registry."
+    || ask "This shell command could not be parsed, and it touches .storage, the entity registry or integrations."
 # One command per line: split on ; & | newlines, $( ), backticks, ( )
 segments=$(printf '%s\n' "${bare}" | sed -E 's/\$\(|[;&|()`]/\n/g')
 
+# Destructive tool subcommands. Quotes are dropped outright here rather than
+# stripped with their contents, so `bash -c "ha-integrations delete x"` and
+# xargs/loop forms still show the tool and its subcommand as words.
+loose=$(printf '%s\n' "${cmd}" | tr -d "\"'" | sed -E 's/\$\(|[;&|()`]/\n/g')
 while IFS= read -r segment; do
-    mapfile -t words < <(command_words "${segment}")
-    [[ ${words[0]-} == ha-entities && ${words[1]-} == rename ]] || continue
-    [[ " ${words[*]} " == *" --dry-run "* ]] \
-        || ask "Changing an entity_id breaks every automation, script and dashboard that still uses the old one."
-done <<< "${segments}"
+    read -ra words <<< "${segment}"
+    reason=''
+    for ((i = 0; i < ${#words[@]}; i++)); do
+        tool=${words[i]##*/}
+        case "${tool%.py} ${words[i + 1]-}" in
+            'ha-entities rename')
+                reason="Changing an entity_id breaks every automation, script and dashboard that still uses the old one."
+                ;;
+            'ha-integrations delete')
+                reason="Deleting an integration removes its devices and entities; automations, scripts and dashboards that use them break."
+                ;;
+            'ha-integrations disable')
+                reason="Disabling an integration unloads it; its entities stay unavailable until it is enabled again."
+                ;;
+        esac
+    done
+    [[ -z ${reason} || " ${words[*]} " == *" --dry-run "* ]] || ask "${reason}"
+done <<< "${loose}"
 
 if [[ ${cmd} == *.storage* ]]; then
     redirects_safe "${bare}" \
