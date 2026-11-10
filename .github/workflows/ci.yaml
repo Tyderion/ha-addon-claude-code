@@ -55,3 +55,4 @@ jobs:
           python3 ssh/tests/test_ha_integrations.py
           python3 ssh/tests/test_ha_lib.py
           python3 ssh/tests/test_ha_history.py
+          python3 ssh/tests/test_ha_secrets.py

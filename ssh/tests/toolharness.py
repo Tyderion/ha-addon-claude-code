@@ -23,6 +23,8 @@ BIN = os.path.join(
 # What the tools import from ha_lib that needs no connection
 SHARED = (
     "FORMAT_PARENT",
+    "HA_HOST",
+    "HA_PORT",
     "json_or_str",
     "parse_pairs",
     "print_output",

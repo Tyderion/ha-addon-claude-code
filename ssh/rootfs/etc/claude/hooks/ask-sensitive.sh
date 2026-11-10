@@ -29,6 +29,12 @@
 #                 not tell the two apart. The tool is found anywhere in a
 #                 segment, quotes removed, so loops, xargs, `timeout`,
 #                 `bash -c "..."` and path or python3 forms all count.
+#   ha-secrets get / add
+#                 get prints a secret's value; add stores a literal value the
+#                 user should see first. Found the same way, but with no
+#                 --dry-run exemption. The other ha-secrets commands never
+#                 show a value (webhook prints only the id it just generated)
+#                 and pass.
 #
 # A command that reaches a file without naming it (`grep -r password
 # /homeassistant`) is not caught; this closes the common paths, not every path.
@@ -197,10 +203,10 @@ if [[ ${cmd} == *secrets.yaml* ]]; then
     ask "This shell command touches secrets.yaml, which holds your Home Assistant credentials."
 fi
 
-[[ ${cmd} == *.storage* || ${cmd} == *ha-entities* || ${cmd} == *ha-integrations* ]] || exit 0
+[[ ${cmd} == *.storage* || ${cmd} == *ha-entities* || ${cmd} == *ha-integrations* || ${cmd} == *ha-secrets* ]] || exit 0
 shopt -s extglob
 bare=$(strip_single_quotes "${cmd}") \
-    || ask "This shell command could not be parsed, and it touches .storage, the entity registry or integrations."
+    || ask "This shell command could not be parsed, and it touches .storage, the entity registry, integrations or secrets."
 # Drop fd duplications (2>&1, >&2, <&3, >&-) and turn the both-streams forms
 # (&>, >&FILE) into a plain `>`, so the split below only sees real `&`
 # separators and every file redirect keeps its target
@@ -227,6 +233,12 @@ while IFS= read -r segment; do
                 ;;
             'ha-integrations disable')
                 reason="Disabling an integration unloads it; its entities stay unavailable until it is enabled again."
+                ;;
+            'ha-secrets get')
+                ask "This prints a value from secrets.yaml, which holds your Home Assistant credentials."
+                ;;
+            'ha-secrets add')
+                ask "This stores a new value in secrets.yaml, which holds your Home Assistant credentials."
                 ;;
         esac
     done

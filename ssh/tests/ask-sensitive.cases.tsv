@@ -94,3 +94,17 @@ ask	ls /homeassistant/.storage 2>&1 && rm /homeassistant/.storage/y
 # reads the destructive guard lets through still ask here: sed and cp are not read-only
 ask	sed -n '1,40p' /homeassistant/.storage/core.config_entries
 ask	cp /homeassistant/.storage/lovelace.x /tmp/backup.json
+# ha-secrets: get and add ask in every form, the rest pass; no dry-run exemption
+pass	ha-secrets keys
+pass	ha-secrets keys --search nas --format json
+pass	ha-secrets webhook x3_webhook_id --comment 'X3 reader'
+pass	ha-secrets fire x3_webhook_id --data ok=true
+ask	ha-secrets get router_password
+ask	ha-secrets add api_token abc123
+ask	ha-secrets get router_password --dry-run
+ask	cd /homeassistant && ha-secrets keys; ha-secrets get router_password
+ask	bash -c "ha-secrets get router_password"
+ask	echo k | xargs ha-secrets get
+ask	/usr/local/bin/ha-secrets.py add k v
+ask	echo s3cret | ha-secrets add api_token -
+ask	cat /homeassistant/secrets.yaml; ha-secrets keys

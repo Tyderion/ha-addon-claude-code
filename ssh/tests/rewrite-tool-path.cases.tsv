@@ -15,3 +15,5 @@ unchanged	python3 /tmp/ha-history-analysis.py --days 3
 unchanged	bash /share/scripts/ha-reload-all.sh
 unchanged	cd /tmp && python3 ha-state_dump.py
 unchanged	rg ha-state /homeassistant
+ha-secrets keys	./ha-secrets keys
+ha-secrets fire k	python3 /usr/local/bin/ha-secrets.py fire k

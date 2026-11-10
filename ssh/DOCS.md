@@ -464,7 +464,8 @@ Four hooks ship with the app and are registered automatically in
   changes an entity_id with `ha-entities rename`, or that deletes or
   disables an integration with `ha-integrations delete` / `disable`. A
   `--dry-run` of any of these, which only reports what would change, runs
-  without asking.
+  without asking. `ha-secrets get` (prints a secret's value) and
+  `ha-secrets add` (stores a literal value) always ask.
 - **Tool path rewriting** — Claude reaching for `./ha-entities`,
   `/usr/local/bin/ha-service` or `python3 ha-state.py` has the command
   rewritten to the bare PATH name before it runs. Without this, those forms
@@ -562,6 +563,10 @@ from what you ask; you can also invoke one directly, e.g.
   fields; a run that stops part way aborts the flow and saves nothing.
   Passwords are masked in the output, and `"!secret NAME"` values are read
   from `secrets.yaml` without being shown to Claude.
+- `Secrets` — list secret names, generate and store webhook ids, test-fire a
+  webhook, add or read a secret (`ha-secrets`), so Claude never has to open
+  `secrets.yaml`. Names, new webhook ids and test calls run without asking;
+  a secret's value is only printed or stored after you confirm.
 - `CallService` — look up a service's real fields and call it (`ha-service`).
 - `SetState` — set helpers, counters, timers and vars with validation and
   read-back (`ha-state`).
