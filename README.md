@@ -1,87 +1,52 @@
 # Home Assistant App: SSH & Claude Code Terminal
 
-[![GitHub Release][releases-shield]][releases]
 [![License][license-shield]](LICENSE.md)
 
 ![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
 
-[![Github Actions][github-actions-shield]][github-actions]
-
-This app allows you to log in to your Home Assistant instance using
-SSH or Web Terminal, with [Claude Code][claude-code] pre-installed for
-AI-assisted Home Assistant configuration.
+[Claude Code][claude-code] set up to work on one Home Assistant instance: it starts in your configuration directory, knows your entities, services and integrations through bundled tools, and runs behind guardrails that keep it away from Home Assistant's internal state and your credentials. Underneath is a full SSH server and web terminal.
 
 ![Web Terminal in the Home Assistant Frontend](images/screenshot.png)
 
-## About
-
-This app allows you to log in to your Home Assistant instance using
-SSH or a Web Terminal, giving you access to your folders and
-also includes a command-line tool to do things like restart, update,
-and check your instance.
-
-This fork includes **Claude Code**, an AI-powered coding assistant that can
-help you optimize your Home Assistant configuration, write automations,
-and troubleshoot issues directly from the terminal.
-
-Based on the [Advanced SSH & Web Terminal app][upstream] by the
-Home Assistant Community app project.
-
-[:books: Read the full app documentation][docs]
+[:books: Read the full documentation][docs]
 
 ## WARNING
 
-The advanced SSH & Web Terminal app is very powerful and gives you access
-to almost all tools and hardware of your system.
+This app runs as root with access to almost all tools and hardware of your system, and Claude Code acts with those rights. The guardrails below block the most damaging operations and ask before the risky ones, but they are not a sandbox. Review what Claude proposes, keep backups, and use the permission mode that matches how much you want to approve by hand.
 
-While this app is created and maintained with care and with security in mind,
-in the wrong or inexperienced hands, it could damage your system.
+## What Claude Code gets
 
-## Features
+**Tools that talk to Home Assistant's own APIs**, so Claude looks things up instead of guessing and never edits `.storage` by hand. They are on `PATH` and covered by skills that tell Claude when to use which:
 
-This app, of course, provides an SSH server, based on [OpenSSH][openssh] and
-a web-based Terminal (which can be included in your Home Assistant frontend) as
-well. Additionally, it comes out of the box with the following:
+| Skill               | Tool                            | What it does                                                                        |
+| ------------------- | ------------------------------- | ----------------------------------------------------------------------------------- |
+| `FindEntities`      | `ha-entities`                   | Find entities, read their state, list areas, domains, scripts and automations       |
+| `FindReferences`    | `ha-entities refs`              | What uses an entity or device: automations, scripts, dashboards, templates, YAML    |
+| `UpdateEntity`      | `ha-entities update` / `rename` | Rename entities and devices, move them to areas, hide, disable, change entity_ids   |
+| `CallService`       | `ha-service`                    | Look up a service's real fields and call it                                         |
+| `SetState`          | `ha-state`                      | Set helpers, counters, timers and vars with validation and read-back                |
+| `QueryHistory`      | `ha-history`                    | Recorded history and long-term statistics                                           |
+| `DebugAutomation`   | `ha-trace`                      | Why an automation did or didn't run, from its traces                                |
+| `TestTemplate`      | `ha-template`                   | Render Jinja against live state; device, area and label membership                  |
+| `ManageIntegration` | `ha-integrations`               | Add, configure, reload, disable or remove integrations through config flows         |
+| `ManageSecrets`     | `ha-secrets`                    | List secret names, create and test-fire webhook ids, without opening `secrets.yaml` |
+| `EditDashboard`     | `ha-dashboard`                  | Read and write Lovelace dashboards through the API                                  |
+| `ReloadConfig`      | `ha-reload`                     | Hot-reload YAML, and decide when a restart is really needed                         |
 
-- Access your command line right from the Home Assistant frontend!
-- A secure default configuration of SSH:
-  - Only allows login by the configured user, even if more users are created.
-  - Only uses known secure ciphers and algorithms.
-  - Limits login attempts to hold off brute-force attacks better.
-  - Many more security tweaks, _this app passes all [ssh-audit] checks
-    without warnings!_
-    ![Result of SSH-Audit][ssh-audit-image]
-- Comes with an SSH compatibility mode option to allow older clients to connect.
-- Support for Mosh allowing roaming and supports intermittent connectivity.
-- SFTP support is disabled by default but is user configurable.
-- Compatible if Home Assistant was installed via the generic Linux installer.
-- Username is configurable, so `root` is no longer mandatory.
-- Persists custom SSH client settings & keys between app restarts
-- Log levels for allowing you to triage issues easier.
-- Hardware access to your audio, uart/serial devices and GPIO pins.
-- Runs with more privileges, allowing you to debug and test more situations.
-- Has access to the dbus of the host system.
-- Has the option to access the Docker instance running on the host system.
-- Runs on host level network, allowing you to open ports or run little daemons.
-- Have custom Alpine packages installed on start. This allows you to install
-  your favorite tools, which will be available every single time you log in.
-- Execute custom commands on app start so that you can customize the
-  shell to your likings.
-- [ZSH][zsh] as its default shell. Easier to use for the beginner, more advanced
-  for the more experienced user. It even comes preloaded with
-  ["Oh My ZSH"][ohmyzsh], with some plugins enabled as well.
-- Contains a sensible set of tools right out of the box: curl, Wget, RSync, GIT,
-  Nmap, Mosquitto client, MariaDB/MySQL client, Awake ("wake on LAN"), Nano,
-  Vim, tmux, and a bunch commonly used networking tools.
-- **[Claude Code][claude-code]** pre-installed for AI-assisted Home Assistant
-  configuration and automation development.
-- **yamllint** included for validating YAML configuration files.
+**Guardrails**, as hooks and permission rules:
+
+- **Blocked outright, in every permission mode:** recursive deletes of a mapped directory, `mkfs`/`dd` onto a device, piping a download into a shell, the usual shell writes into `.storage` (`tee`, `sed -i`, `cp`/`mv` into it, redirects) and any edit there with Claude's file tools.
+- **Asks you first, in every mode except `bypassPermissions`:** any command or edit that names `secrets.yaml`, non-read access to `.storage`, `ha-entities rename` and `ha-integrations delete`/`disable` (a `--dry-run` runs without asking), `ha-secrets get`/`add`, `ha-service --unsafe`, `ha-dashboard delete`, and Core restarts, reboots and backup restores.
+- **Checked after every edit:** a YAML file Claude edits under `/homeassistant` with its file tools is parsed at once, and syntax errors or duplicate keys come back to Claude before it reloads anything.
+
+**Pre-configured permissions** for the tools above, with `auto` permission mode by default, so routine work runs without a prompt for every command.
+
+**Options** to name the session, continue the last conversation, start the session when the app starts, connect it to [Remote Control][claude-remote-control], pick the permission mode, and write your own `CLAUDE.md`. Login, history and settings live in `/share/.claude` (and `/share/.claude.json`) and survive restarts and app updates; Claude Code's own updates do too, in `/data/claude-versions`.
 
 ## Installation
 
-This app is not part of the official Home Assistant app repository.
-To install it, you need to add this repository as a custom repository:
+This app is not part of the official Home Assistant app repository. To install it, add this repository as a custom repository:
 
 1. Open your Home Assistant instance
 2. Navigate to **Settings** → **Apps** → **Install App**
@@ -95,76 +60,40 @@ To install it, you need to add this repository as a custom repository:
 7. Refresh the page and find "SSH & Claude Code Terminal" in the app store
 8. Click **Install**
 
-After installation, configure your username and password/SSH keys, then start
-the app.
+After installation, configure your username and password or SSH keys, then start the app.
 
-## Using Claude Code
+## Getting started
 
-Claude Code starts automatically when you open the terminal, landing you directly
-in your Home Assistant configuration directory (`/homeassistant`).
+1. Open the terminal from the sidebar (or log in over SSH).
+2. Claude Code starts in `/homeassistant`.
+3. On first use, run `/login` to authenticate in your browser.
+4. Ask about your setup: "why didn't the hallway lights turn on last night?", "add the bedroom temperature to my overview dashboard", "make a webhook my NAS can call".
 
-1. Open the terminal (via SSH or Web Terminal in the sidebar)
-2. Claude Code launches automatically
-3. On first use, run `/login` to authenticate via your browser
-4. Start asking questions about your Home Assistant configuration
+The status line shows your Home Assistant version, the model and the context usage.
 
-**Key features:**
+## The terminal underneath
 
-- Auto-starts in `/homeassistant` directory
-- Pre-configured permissions for HA files and commands
-- `ha-reload` command for instant YAML hot-reload (no restart needed)
-- Status line shows HA version, model, and context usage
-- Built-in `/homeassistant-reload` skill for intelligent config reloading
+The app is a fork of the [Advanced SSH & Web Terminal app][upstream] and keeps all of it: a hardened OpenSSH server (configurable user, SFTP, Mosh, compatibility mode), the web terminal, ZSH with Oh My ZSH, tmux, the `ha` CLI, common network and database tools, extra Alpine packages and init commands on start, and access to hardware, dbus and optionally Docker. The [documentation][docs] covers every option.
 
 ## Support
 
-Got questions?
-
-You have several options to get them answered:
-
-- The [Home Assistant Community Apps Discord chat server][discord] for app
-  support and feature requests.
-- The [Home Assistant Discord chat server][discord-ha] for general Home
-  Assistant discussions and questions.
-- The Home Assistant [Community Forum][forum].
-- Join the [Reddit subreddit][reddit] in [/r/homeassistant][reddit]
-
-You could also [open an issue here][issue] GitHub.
+[Open an issue][issue] for bugs and feature requests. For general Home Assistant questions, the [Home Assistant Discord][discord-ha] and [/r/homeassistant][reddit] are good places.
 
 ## Development
 
-This project uses [pixi](https://pixi.sh) for developer tooling.
-
-**Format all files (markdown, shell scripts, Python):**
+The repository layout and conventions are in [CLAUDE.md](CLAUDE.md). Tooling runs through [pixi](https://pixi.sh):
 
 ```sh
-pixi run fmt
+pixi run fmt         # format markdown, shell scripts and Python
+pixi run fmt-check   # check formatting without writing
+pixi run test        # hook tables, the claude wrapper and the Python tool tests
 ```
 
-**Check formatting without writing changes:**
-
-```sh
-pixi run fmt-check
-```
-
-You can also format individually: `pixi run fmt-md`, `pixi run fmt-sh`, `pixi run fmt-py`.
-
-## Contributing
-
-This is an active open-source project. We are always open to people who want to
-use the code or contribute to it.
-
-We have set up a separate document containing our
-[contribution guidelines](.github/CONTRIBUTING.md).
-
-Thank you for being involved! :heart_eyes:
+There is no local image build: CI builds it, and to try a change for real, install your fork as a custom repository in Home Assistant. Contribution guidelines are in [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 ## Authors & contributors
 
-The original setup of this repository is by [Franck Nijhof][frenck].
-
-For a full list of all authors and contributors,
-check [the contributors page][contributors].
+This fork is maintained by [Tyderion][tyderion]. It builds on [Jan Nicklas][jantimon]'s Claude Code fork of the [Advanced SSH & Web Terminal app][upstream], which [Franck Nijhof][frenck] created. For everyone who contributed, see [the contributors page][contributors].
 
 ## License
 
@@ -193,35 +122,14 @@ SOFTWARE.
 [aarch64-shield]: https://img.shields.io/badge/aarch64-yes-green.svg
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
 [claude-code]: https://claude.ai/code
-[commits-shield]: https://img.shields.io/github/commit-activity/y/hassio-addons/app-ssh.svg
-[commits]: https://github.com/hassio-addons/app-ssh/commits/main
-[contributors]: https://github.com/hassio-addons/app-ssh/graphs/contributors
+[claude-remote-control]: https://code.claude.com/docs/en/remote-control
+[contributors]: https://github.com/Tyderion/ha-addon-claude-code/graphs/contributors
 [discord-ha]: https://discord.gg/c5DvZ4e
-[discord-shield]: https://img.shields.io/discord/478094546522079232.svg
-[discord]: https://discord.me/hassioaddons
-[docs]: https://github.com/hassio-addons/app-ssh/blob/main/ssh/DOCS.md
-[forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg
-[forum]: https://community.home-assistant.io/t/community-hass-io-add-on-ssh-web-terminal/33820?u=frenck
+[docs]: https://github.com/Tyderion/ha-addon-claude-code/blob/main/ssh/DOCS.md
 [frenck]: https://github.com/frenck
-[github-sponsors-shield]: https://frenck.dev/wp-content/uploads/2019/12/github_sponsor.png
-[github-sponsors]: https://github.com/sponsors/frenck
-[github-actions-shield]: https://github.com/hassio-addons/app-ssh/workflows/CI/badge.svg
-[github-actions]: https://github.com/hassio-addons/app-ssh/actions
-[hass-ssh]: https://github.com/home-assistant/addons/tree/master/ssh
-[issue]: https://github.com/hassio-addons/app-ssh/issues
-[license-shield]: https://img.shields.io/github/license/hassio-addons/app-ssh.svg
-[maintenance-shield]: https://img.shields.io/maintenance/yes/2026.svg
-[ohmyzsh]: http://ohmyz.sh/
-[openssh]: https://www.openssh.com/
-[patreon-shield]: https://frenck.dev/wp-content/uploads/2019/12/patreon.png
-[patreon]: https://www.patreon.com/frenck
-[project-stage-shield]: https://img.shields.io/badge/project%20stage-production%20ready-brightgreen.svg
+[issue]: https://github.com/Tyderion/ha-addon-claude-code/issues
+[jantimon]: https://github.com/jantimon
+[license-shield]: https://img.shields.io/github/license/Tyderion/ha-addon-claude-code.svg
 [reddit]: https://reddit.com/r/homeassistant
-[releases-shield]: https://img.shields.io/github/release/hassio-addons/app-ssh.svg
-[releases]: https://github.com/hassio-addons/app-ssh/releases
-[repository]: https://github.com/hassio-addons/repository
-[semver]: http://semver.org/spec/v2.0.0.htm
-[ssh-audit-image]: images/ssh-audit.png
-[ssh-audit]: https://github.com/jtesta/ssh-audit
-[upstream]: https://github.com/hassio-addons/addon-ssh
-[zsh]: https://en.wikipedia.org/wiki/Z_shell
+[tyderion]: https://github.com/Tyderion
+[upstream]: https://github.com/hassio-addons/app-ssh

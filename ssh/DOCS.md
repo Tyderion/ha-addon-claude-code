@@ -615,9 +615,9 @@ Got questions?
 
 ## Authors & contributors
 
-This fork is maintained by [Jan Nicklas][jantimon].
-
-The original app was created by [Franck Nijhof][frenck].
+This fork is maintained by [Tyderion][tyderion]. It builds on
+[Jan Nicklas][jantimon]'s Claude Code fork of the Advanced SSH & Web
+Terminal app, which [Franck Nijhof][frenck] created.
 
 For a full list of all authors and contributors,
 check [the contributors page][contributors].
@@ -649,19 +649,20 @@ SOFTWARE.
 [alpine-packages]: https://pkgs.alpinelinux.org/packages
 [claude-remote-control]: https://code.claude.com/docs/en/remote-control
 [claude-code]: https://claude.ai/code
-[contributors]: https://github.com/hassio-addons/app-ssh/graphs/contributors
+[contributors]: https://github.com/Tyderion/ha-addon-claude-code/graphs/contributors
 [discord-ha]: https://discord.gg/c5DvZ4e
 [discord]: https://discord.me/hassioaddons
 [forum]: https://community.home-assistant.io/t/community-hass-io-add-on-ssh-web-terminal/33820?u=frenck
 [frenck]: https://github.com/frenck
 [github-ssh]: https://help.github.com/articles/connecting-to-github-with-ssh/
 [hass-ssh]: https://github.com/home-assistant/addons/tree/master/ssh
-[issue]: https://github.com/hassio-addons/app-ssh/issues
+[issue]: https://github.com/Tyderion/ha-addon-claude-code/issues
+[tyderion]: https://github.com/Tyderion
 [jantimon]: https://github.com/jantimon
 [ohmyzsh]: http://ohmyz.sh/
 [openssh]: https://www.openssh.com/
 [reddit]: https://reddit.com/r/homeassistant
-[releases]: https://github.com/hassio-addons/app-ssh/releases
+[releases]: https://github.com/Tyderion/ha-addon-claude-code/releases
 [semver]: https://semver.org/spec/v2.0.0.html
 [yamllint]: https://yamllint.readthedocs.io/
 [zsh]: https://en.wikipedia.org/wiki/Z_shell
