@@ -410,8 +410,9 @@ and `bash` analysis, and read-only pipelines through `jq`, `rg` and friends.
 Explicit rules still exist and still take precedence:
 
 - **Read/Edit** (Edit covers every file-writing tool): `/homeassistant/**`,
-  `/addon_configs/**`, `/share/**`
-- **Read**: `/addons/**`, `/backup/**`, `/media/**`, `/ssl/**`
+  `/app_configs/**` (also as `/addon_configs/**`), `/share/**`
+- **Read**: `/local_apps/**` (also as `/addons/**`), `/backup/**`,
+  `/media/**`, `/ssl/**`
 - **Bash**: the `ha` CLI, the bundled `ha-*` tools, `yamllint`, `sqlite3`,
   `python3`, `bluetoothctl`, read-only shell utilities and `git`
   subcommands, and `curl` GETs to `http://supervisor/*`

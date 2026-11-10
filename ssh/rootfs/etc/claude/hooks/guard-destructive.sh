@@ -32,7 +32,8 @@ set -uo pipefail
 # Mapped directories that must never be handed to a recursive or forced rm.
 # The filesystem root and the home directory are checked in check_rm.
 readonly -a RM_MAPPED_TARGETS=(
-    /homeassistant /config /share /data /addon_configs /addons /backup /media
+    /homeassistant /config /share /data /app_configs /addon_configs
+    /local_apps /addons /backup /media
     /ssl /root /etc /usr /bin /sbin /lib /var
 )
 
