@@ -64,7 +64,7 @@ ha-dashboard set my-new-dash /tmp/new.json
 
 ## Workflow: Delete a Dashboard
 
-No hook asks before `delete` or `set`: each runs the moment it is issued, so confirm with the user and take the backup first.
+`delete` asks the user first; take the backup before running it. `set` does not ask, so back up before every `set` too.
 
 ```bash
 ha-dashboard get my-new-dash > /tmp/my-new-dash.backup.json

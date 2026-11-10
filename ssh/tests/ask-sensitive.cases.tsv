@@ -116,3 +116,9 @@ ask	ha-service --unsafe call shell_command.backup
 ask	cd /homeassistant && ha-service call recorder.purge --data keep_days=1 --unsafe
 ask	bash -c "ha-service call hassio.addon_restart --unsafe --data addon=core_mosquitto"
 pass	ha-service call light.turn_on --entity light.unsafe_lamp
+# ha-dashboard delete asks; every other ha-dashboard command passes
+ask	ha-dashboard delete my-dash
+ask	ha-dashboard get my-dash > /tmp/my-dash.backup.json && ha-dashboard delete my-dash
+pass	ha-dashboard set my-dash /tmp/my-dash.json
+pass	ha-dashboard list
+pass	ha-dashboard update my-dash --title "Delete me later"

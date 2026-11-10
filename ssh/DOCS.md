@@ -467,7 +467,7 @@ Four hooks ship with the app and are registered automatically in
   without asking. `ha-secrets get` (prints a secret's value),
   `ha-secrets add` (stores a literal value) and any `ha-service` call with
   `--unsafe` (Core restart/stop, `hassio.*`, recorder purges,
-  `shell_command.*`) always ask.
+  `shell_command.*`) and `ha-dashboard delete` always ask.
 - **Tool path rewriting** — Claude reaching for `./ha-entities`,
   `/usr/local/bin/ha-service` or `python3 ha-state.py` has the command
   rewritten to the bare PATH name before it runs. Without this, those forms

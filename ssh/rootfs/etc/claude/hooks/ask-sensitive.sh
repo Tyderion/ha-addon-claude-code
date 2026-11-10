@@ -35,6 +35,11 @@
 #                 --dry-run exemption. The other ha-secrets commands never
 #                 show a value (webhook prints only the id it just generated)
 #                 and pass.
+#   ha-dashboard delete
+#                 permanent; only a `get` backup restores it. No dry-run
+#                 exemption (the tool has none). `set` stays prompt-free,
+#                 since editing dashboards is routine and the skill backs up
+#                 first.
 #   ha-service --unsafe
 #                 the services ha-service refuses without the flag (Core
 #                 restart/stop, hassio.*, recorder purges, shell_command.*).
@@ -209,7 +214,7 @@ if [[ ${cmd} == *secrets.yaml* ]]; then
     ask "This shell command touches secrets.yaml, which holds your Home Assistant credentials."
 fi
 
-[[ ${cmd} == *.storage* || ${cmd} == *ha-entities* || ${cmd} == *ha-integrations* || ${cmd} == *ha-secrets* || ${cmd} == *ha-service* ]] || exit 0
+[[ ${cmd} == *.storage* || ${cmd} == *ha-entities* || ${cmd} == *ha-integrations* || ${cmd} == *ha-secrets* || ${cmd} == *ha-service* || ${cmd} == *ha-dashboard* ]] || exit 0
 shopt -s extglob
 bare=$(strip_single_quotes "${cmd}") \
     || ask "This shell command could not be parsed, and it touches .storage, the entity registry, integrations, secrets or services."
@@ -245,6 +250,9 @@ while IFS= read -r segment; do
                 ;;
             'ha-secrets add')
                 ask "This stores a new value in secrets.yaml, which holds your Home Assistant credentials."
+                ;;
+            'ha-dashboard delete')
+                ask "Deleting a dashboard removes it and all its cards for good; only a backup taken with ha-dashboard get brings it back."
                 ;;
         esac
         if [[ ${tool%.py} == ha-service && " ${words[*]} " == *" --unsafe "* ]]; then
