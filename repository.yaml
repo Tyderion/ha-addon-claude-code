@@ -1,4 +1,4 @@
 ---
-name: Claude Testing
+name: "Claude Code (+ SSH Terminal)"
 url: https://github.com/Tyderion/ha-addon-claude-code
 maintainer: Jan Nicklas <https://github.com/jantimon>
