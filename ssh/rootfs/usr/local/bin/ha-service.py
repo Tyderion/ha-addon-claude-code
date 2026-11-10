@@ -48,7 +48,7 @@ from ha_lib import (
 )
 
 # Service calls that can take HA down, run arbitrary code, or delete data.
-# The permission ask-list gates the canonical command forms; this in-tool
+# ask-sensitive.sh asks the user before any call carrying --unsafe; this in-tool
 # gate cannot be bypassed by reordering CLI flags.
 DANGEROUS_PATTERNS = (
     "homeassistant.restart",

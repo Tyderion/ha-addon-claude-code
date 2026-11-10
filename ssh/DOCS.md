@@ -464,8 +464,10 @@ Four hooks ship with the app and are registered automatically in
   changes an entity_id with `ha-entities rename`, or that deletes or
   disables an integration with `ha-integrations delete` / `disable`. A
   `--dry-run` of any of these, which only reports what would change, runs
-  without asking. `ha-secrets get` (prints a secret's value) and
-  `ha-secrets add` (stores a literal value) always ask.
+  without asking. `ha-secrets get` (prints a secret's value),
+  `ha-secrets add` (stores a literal value) and any `ha-service` call with
+  `--unsafe` (Core restart/stop, `hassio.*`, recorder purges,
+  `shell_command.*`) always ask.
 - **Tool path rewriting** — Claude reaching for `./ha-entities`,
   `/usr/local/bin/ha-service` or `python3 ha-state.py` has the command
   rewritten to the bare PATH name before it runs. Without this, those forms

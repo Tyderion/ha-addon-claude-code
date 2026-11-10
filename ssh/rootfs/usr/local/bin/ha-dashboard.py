@@ -38,8 +38,17 @@ from ha_lib import ha_result, run_cli
 
 def _dashboard_id(url_path: str) -> str:
     """Look up the dashboard_id used by update/delete from its url_path."""
+    if url_path == "default":
+        raise RuntimeError(
+            "the main dashboard has no registry entry; only get and set work on it"
+        )
     for d in ha_result({"type": "lovelace/dashboards/list"}) or []:
         if d.get("url_path") == url_path:
+            if d.get("mode") == "yaml" or "id" not in d:
+                raise RuntimeError(
+                    f"'{url_path}' is a YAML-mode dashboard declared in "
+                    "configuration.yaml; edit its YAML file instead"
+                )
             return d["id"]
     raise RuntimeError(
         f"no dashboard with url_path '{url_path}' — run `ha-dashboard list`"
@@ -55,7 +64,11 @@ def cmd_list(args):
     for d in dashboards:
         sidebar = "" if d.get("show_in_sidebar") else "  [hidden]"
         admin = "  [admin]" if d.get("require_admin") else ""
-        print(f"{d['url_path']:30s}  {d.get('title', '(no title)')}{sidebar}{admin}")
+        yaml_mode = "  [yaml: edit its file]" if d.get("mode") == "yaml" else ""
+        print(
+            f"{d['url_path']:30s}  {d.get('title', '(no title)')}"
+            f"{sidebar}{admin}{yaml_mode}"
+        )
 
 
 def cmd_get(args):

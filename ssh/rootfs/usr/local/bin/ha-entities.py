@@ -521,7 +521,11 @@ def cmd_update(args):
 def find_references(entity_id, root=None):
     """Return [{file, line, text}] for each line that names entity_id."""
     root = root or HA_CONFIG
-    pattern = re.compile(r"(?<![\w.])" + re.escape(entity_id) + r"(?![\w])")
+    # Not inside a longer id (sensor.light.lamp), except after `states.`, the
+    # template attribute form (states.light.lamp.state)
+    pattern = re.compile(
+        r"(?:(?<![\w.])|(?<=\bstates\.))" + re.escape(entity_id) + r"(?![\w])"
+    )
     refs = []
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = os.path.relpath(dirpath, root)
@@ -714,8 +718,9 @@ def cmd_rename(args):
         )
     if storage_refs:
         notes.append(
-            "references under .storage come from UI-made dashboards or helpers: "
-            "fix dashboards with ha-dashboard and helpers in the UI, never by hand"
+            "references under .storage come from UI-made dashboards or config "
+            "entries: fix dashboards with ha-dashboard and integrations or "
+            "config-flow helpers with ha-integrations, never by hand"
         )
     if notes:
         output["notes"] = notes

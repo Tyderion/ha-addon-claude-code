@@ -108,3 +108,11 @@ ask	echo k | xargs ha-secrets get
 ask	/usr/local/bin/ha-secrets.py add k v
 ask	echo s3cret | ha-secrets add api_token -
 ask	cat /homeassistant/secrets.yaml; ha-secrets keys
+# ha-service --unsafe asks in every form; ordinary calls pass
+pass	ha-service call light.turn_on --entity light.office
+pass	ha-service show homeassistant.restart
+ask	ha-service call homeassistant.restart --unsafe
+ask	ha-service --unsafe call shell_command.backup
+ask	cd /homeassistant && ha-service call recorder.purge --data keep_days=1 --unsafe
+ask	bash -c "ha-service call hassio.addon_restart --unsafe --data addon=core_mosquitto"
+pass	ha-service call light.turn_on --entity light.unsafe_lamp

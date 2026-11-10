@@ -8,7 +8,8 @@ Usage:
 
 <target> is an entity_id (automation.morning_lights, script.wake_up) or a
 friendly name/alias. Traces exist only for runs that actually started; HA
-stores the last few runs per item and clears them on Core restart.
+stores the last few runs per item and keeps them across a clean Core
+restart; a crash loses them.
 
 All commands accept --format yaml|json (default: yaml).
 """
@@ -180,9 +181,9 @@ def cmd_runs(args):
     }
     if not traces:
         output["hint"] = (
-            "no stored traces — it has not run since the last Core restart. "
-            "If it should have: check `state` (off = disabled) and verify the "
-            "trigger entity with ha-entities."
+            "no stored traces — it has not run recently. If it should have: "
+            "check `state` (off = disabled), then the trigger entity with "
+            "ha-entities get and ha-history changes."
         )
     print_output(output, args.format)
 
@@ -196,7 +197,7 @@ def cmd_show(args):
         if not traces:
             raise RuntimeError(
                 f"no stored traces for '{state_obj['entity_id']}' — it has not "
-                "run since the last Core restart (check `ha-trace runs`)"
+                "run recently (check `ha-trace runs`)"
             )
         run_id = traces[0]["run_id"]
 

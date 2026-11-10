@@ -129,7 +129,7 @@ def main():
         type=float,
         default=None,
         metavar="N",
-        help="Render timeout in seconds (default: HA's own, 3s)",
+        help="Fail if rendering takes longer than N seconds (default: no limit)",
     )
     parser.set_defaults(func=run)
     run_cli(parser)

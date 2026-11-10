@@ -9,59 +9,49 @@ description:
 
 # ReloadConfig
 
-Intelligently reload Home Assistant configuration after YAML changes.
+`ha-reload` is on `PATH`, takes no arguments and reloads every
+hot-reloadable domain at once (a path form such as `./ha-reload` is
+rewritten to the bare name anyway). If it fails it prints why; do not
+reproduce it with `curl` against the Supervisor API.
 
-`ha-reload` is on `PATH`: call it by bare name (a path form such as
-`./ha-reload` is rewritten to it anyway). If a call errors, fix the call
-rather than writing ad-hoc `ha_lib` scripts or `curl`.
+If only one domain changed and other automations may be mid-run, reload
+just that domain instead: `ha-service call automation.reload` (or
+`script.reload`, `template.reload`, `rest.reload`, ...). A full reload
+stops every running automation and script. Integrations set up in the UI
+are not YAML: use `ha-integrations reload <entry>` (ManageIntegration).
 
 ## When to Use Each Command
 
-| Command           | Use When                                                                               | Downtime       |
-| ----------------- | -------------------------------------------------------------------------------------- | -------------- |
-| `ha-reload`       | YAML changes to automations, scripts, scenes, groups, inputs, templates, zones, themes | None (instant) |
-| `ha core restart` | New integrations, logger/recorder/http changes, database settings                      | 30+ seconds    |
-
-`ha-reload` takes no arguments and reloads every hot-reloadable domain at once — there is no per-domain option.
+| Command           | Use When                                                                                                                    | Downtime                                       |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `ha-reload`       | Any edit inside a domain listed under "What ha-reload Reloads"                                                              | None; a few seconds while HA checks the config |
+| `ha core restart` | A top-level key for a YAML integration that is not loaded yet, `logger:`/`recorder:`/`http:` changes, custom component code | 30+ seconds; asks the user first               |
 
 ## Workflow
 
-After editing YAML files:
-
-1. **Validate first:**
-
+1. **Validate:** every YAML edit under `/homeassistant` is parse-checked
+   automatically by a hook (syntax and duplicate keys); fix any error it
+   returns first. `yamllint <file>` is optional and checks style, not
+   whether HA accepts the file.
+2. **Apply:** `ha-reload`. It is all-or-nothing: Home Assistant checks the
+   whole configuration first and, if anything is invalid, reloads nothing
+   and `ha-reload` exits 1 with HA's error text. Exit 0 can still hide a
+   per-domain setup error (a template that fails at runtime); if the
+   change is not live, `ha core logs` has it.
+3. **Restart only for the cases in the table.** Run `ha core check` (~30s)
+   first, since a restart with an invalid config boots into safe mode,
+   and tell the user what the restart is for:
    ```bash
-   yamllint <file>   # every change
-   ha core check     # only for configuration.yaml changes or before a restart (~30s)
-   ```
-
-2. **Apply changes:**
-
-   ```bash
-   ha-reload
-   ```
-
-3. **Only use restart if ha-reload doesn't pick up changes** (new integrations, etc.):
-   ```bash
-   ha core restart
+   ha core check && ha core restart
    ```
 
 ## What ha-reload Reloads
 
-- `automation:` - automations
-- `script:` - scripts
-- `scene:` - scenes
-- `group:` - groups
-- `input_boolean:`, `input_number:`, `input_select:`, `input_text:`, `input_datetime:` - input helpers
-- `template:` - template sensors/binary sensors
-- `timer:`, `counter:` - timers and counters
-- `schedule:` - schedules
-- `zone:` - zones
-- `person:` - persons
-- `homeassistant:` - core config (name, location, customize)
-- Themes and custom Jinja templates
-
-## Troubleshooting
-
-- `ha-reload` reports success even when an individual domain fails to load — HA returns HTTP 200 regardless. If a change doesn't appear after a reload, check `ha core logs`.
-- If the change still isn't live and it involves a new integration or logger/recorder/http settings, use `ha core restart`.
+Everything Developer Tools → YAML → Quick Reload reloads: every loaded
+integration that offers a `<domain>.reload` service (all except `notify`),
+plus the `homeassistant:` core section (name, location, units, customize),
+themes and custom Jinja templates. That covers automations, scripts,
+scenes, groups, every `input_*` helper, `template:`, timers, counters,
+schedules, zones, persons, and YAML platforms such as `rest`,
+`command_line`, `shell_command` and `mqtt`. The authoritative list on this
+instance is `ha-service list --search reload`.

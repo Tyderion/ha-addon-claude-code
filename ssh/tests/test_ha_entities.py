@@ -252,6 +252,7 @@ class ConfigTree(Base):
             "notes.txt": "light.lamp\n",
             "scripts.yaml": "x:\n  sequence:\n    - device_id: dev1\n",
             "template.yaml": "- sensor:\n    state: \"{{ states('sensor.lamp_power') }}\"\n",
+            "attr.yaml": 'x: "{{ states.light.lamp.state }}"\n',
         }
         for rel, body in files.items():
             path = os.path.join(self.root, rel)
@@ -269,7 +270,8 @@ class RenameTest(ConfigTree):
         self.assertEqual(code, 0)
         self.assertTrue(out["verified"])
         self.assertEqual(
-            self.refs(out), [(".storage/lovelace.main", 1), ("automations.yaml", 2)]
+            self.refs(out),
+            [(".storage/lovelace.main", 1), ("attr.yaml", 1), ("automations.yaml", 2)],
         )
         self.assertEqual(self.fake.updates[0]["new_entity_id"], "light.ceiling")
         self.assertIn("ha-dashboard", " ".join(out["notes"]))
@@ -284,7 +286,7 @@ class RenameTest(ConfigTree):
         )
         self.assertEqual(code, 0)
         self.assertEqual(self.fake.updates, [])
-        self.assertEqual(len(out["references"]), 2)
+        self.assertEqual(len(out["references"]), 3)
 
     def test_refuses_domain_change(self):
         code, _, err = self.run_tool("rename", "light.lamp", "switch.lamp")
@@ -313,9 +315,9 @@ class RefsTest(ConfigTree):
         )
         self.assertEqual(
             sorted(f["file"] for f in refs["files"]),
-            [".storage/lovelace.main", "automations.yaml"],
+            [".storage/lovelace.main", "attr.yaml", "automations.yaml"],
         )
-        self.assertEqual(out["total_references"], 4)
+        self.assertEqual(out["total_references"], 5)
 
     def test_unreferenced_yaml_only_entity(self):
         # Not in the registry (no unique_id) but still searchable

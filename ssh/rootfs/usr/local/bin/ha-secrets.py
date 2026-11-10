@@ -33,6 +33,7 @@ import re
 import string
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from secrets import choice
 
@@ -50,7 +51,11 @@ from ha_lib import (
 
 SECRETS_FILE = "/homeassistant/secrets.yaml"
 KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-TOP_LEVEL_KEY_RE = re.compile(r"^([A-Za-z0-9_]+)\s*:")
+# A top-level key as written by hand: bare, or single- or double-quoted
+TOP_LEVEL_KEY_RE = re.compile(r"""^(?:'([^']+)'|"([^"]+)"|([^\s#'"][^:]*?))\s*:""")
+# Words YAML 1.1 reads as booleans or null, so a key named like this would
+# not compare equal to an existing unquoted one
+YAML_WORDS = {"yes", "no", "on", "off", "true", "false", "null", "y", "n", "~"}
 WEBHOOK_ID_LENGTH = 32
 WEBHOOK_ALPHABET = string.ascii_letters + string.digits
 
@@ -79,14 +84,15 @@ def comments(text):
     """Map each top-level key to the comment block directly above it."""
     found, block = {}, []
     for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            block.append(stripped.lstrip("#").strip())
+        # Only an unindented comment can belong to the next key; an indented
+        # one is part of the previous key's block value
+        if line.startswith("#"):
+            block.append(line.lstrip("#").strip())
             continue
         if m := TOP_LEVEL_KEY_RE.match(line):
             text_block = " ".join(part for part in block if part)
             if text_block:
-                found[m.group(1)] = text_block
+                found[next(g for g in m.groups() if g is not None)] = text_block
         if not line.startswith((" ", "\t")):
             block = []
     return found
@@ -106,6 +112,9 @@ def append(key, value, comment):
             f"'{key}' is not a usable name: letters, digits and _ only, "
             "not starting with a digit"
         )
+    if key.lower() in YAML_WORDS:
+        raise RuntimeError(f"'{key}' is a YAML keyword; pick another name")
+    existed = os.path.exists(SECRETS_FILE)
     text = read_text()
     if key in parse(text):
         raise RuntimeError(
@@ -122,15 +131,20 @@ def append(key, value, comment):
         {key: value}, default_flow_style=False, allow_unicode=True, width=1 << 16
     )
 
-    with open(SECRETS_FILE, "a", encoding="utf-8") as f:
+    # A new secrets file is readable by its owner only
+    fd = os.open(SECRETS_FILE, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
         f.write(block)
     try:
         written = parse(read_text()).get(key)
     except RuntimeError:
         written = None
     if written != value:
-        with open(SECRETS_FILE, "rb+") as f:
-            f.truncate(len(text.encode("utf-8")))
+        if existed:
+            with open(SECRETS_FILE, "rb+") as f:
+                f.truncate(len(text.encode("utf-8")))
+        else:
+            os.remove(SECRETS_FILE)
         raise RuntimeError(f"'{key}' did not read back after writing; undone")
 
 
@@ -191,6 +205,9 @@ def run_webhook(args):
 
 def run_fire(args):
     webhook_id = lookup(args.key)
+    # HA's webhook_id is a string, but an unquoted number in the file is not
+    if isinstance(webhook_id, int) and not isinstance(webhook_id, bool):
+        webhook_id = str(webhook_id)
     if not isinstance(webhook_id, str) or not webhook_id:
         raise RuntimeError(f"'{args.key}' does not hold a webhook id")
     if args.json is not None:
@@ -200,7 +217,8 @@ def run_fire(args):
             raise RuntimeError(f"--json is not valid JSON: {e}") from None
     else:
         body = parse_pairs(args.data, "--data")
-    status, reply = post_webhook(args.method, f"/api/webhook/{webhook_id}", body)
+    path = "/api/webhook/" + urllib.parse.quote(webhook_id, safe="")
+    status, reply = post_webhook(args.method, path, body)
     out = {"key": args.key, "method": args.method, "status": status}
     if reply is not None:
         out["reply"] = reply

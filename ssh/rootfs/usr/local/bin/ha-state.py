@@ -133,7 +133,7 @@ def build_datetime(state, value, args):
 
 
 def build_counter(state, value, args):
-    if value.lstrip("+-").isdigit():
+    if re.fullmatch(r"[+-]?\d+", value):
         return "set_value", {"value": int(value)}, str(int(value))
     if value in COUNTER_KEYWORDS:
         return value, {}, None

@@ -7,8 +7,9 @@ description:
   automations. USE WHEN "is the garage door open", "what's the battery of
   X", "which lights are on", "find the kitchen lamp", and before writing
   anything that names an entity. NOT FOR the past (QueryHistory), what uses
-  an entity (FindReferences), or device and area membership (TestTemplate).
-  Never guess entity IDs, curl the API or read .storage for this.
+  an entity (FindReferences), or which device an entity belongs to and
+  which devices are in an area (TestTemplate). Never guess entity IDs, curl
+  the API or read .storage for this.
 ---
 
 # FindEntities
@@ -18,6 +19,13 @@ Use `ha-entities` to query Home Assistant entity states, areas, domains, scripts
 `ha-entities` is on `PATH`: call it by bare name (a path form such as
 `./ha-entities` is rewritten to it anyway). If a call errors, fix the call
 rather than writing ad-hoc `ha_lib` scripts or `curl`.
+
+Start with `ha-entities list --search TEXT` (a substring of the entity_id
+or name); never guess an entity_id. Use `domains` or `areas` when you need
+the catalogue or a search came back empty, and `get` when you need exact
+attribute names rather than the `key_attr` summary. Always narrow `list`
+with `--domain`, `--area` or `--search`: a bare `list` on a large instance
+returns hundreds of entities.
 
 ## Commands
 
@@ -31,100 +39,73 @@ ha-entities scripts
 ha-entities automations
 ```
 
-All commands output YAML by default; add `--format json` for JSON. All `list` filters are case-insensitive. `--limit` defaults to 100 (`--limit 0` = unlimited).
+All commands output YAML by default; put `--format json` after the
+subcommand for JSON. All `list` filters are case-insensitive:
+
+- `--area` matches the area's `name` exactly, never its `area_id`. An
+  entity is in an area when it has one itself or inherits its device's.
+- `--state` is an exact match on the state string (`on`, `unavailable`,
+  `23.5`), not a substring or numeric comparison.
+- `--exclude-unavailable` drops `unavailable` and `unknown`.
+- Results are sorted by `entity_id`, and `--limit` (default 100, `0` =
+  unlimited) keeps the first N of that order, so a truncated list can hide
+  the entity you want: narrow the filters rather than raising the limit.
 
 ## Examples
 
 ```bash
-# List all domains and their entity counts
-ha-entities domains
-
-# List all areas and their entity counts
-ha-entities areas
-
-# Find an entity by name or id fragment (best first step)
+# Find an entity by name or id fragment
 ha-entities list --search "office ceiling"
 
-# List all light entities
-ha-entities list --domain light
+# Several domains at once; area names with spaces are quoted
+ha-entities list --domain light switch --area "Living Room" --state on
 
-# List entities from several domains at once
-ha-entities list --domain light switch
-
-# List entities in a specific area
-ha-entities list --area "Office"
-
-# List entities that are currently "on"
-ha-entities list --domain light --state on
-
-# Hide unavailable/unknown entities
-ha-entities list --domain sensor --exclude-unavailable
-
-# Get full details for specific entities
+# Full attributes for specific entities (several per call)
 ha-entities get light.office_ceiling sensor.netatmo_temperature
-
-# Combine filters
-ha-entities list --domain sensor --area "Living Room" --limit 5
-
-# List all scripts with their aliases
-ha-entities scripts
-
-# List all automations with their aliases
-ha-entities automations
 ```
 
-## Output Format
+## Output
 
-All output is YAML (or JSON with `--format json`).
+### `list`
 
-### `list` — Token-efficient summary
+Returns `{total, filtered_count, returned, truncated, entities}`; `total`
+is the whole-instance entity count and `truncated: true` means `--limit`
+cut the results. Each entity has `entity_id`, `name`, `state`, plus `area`
+and `key_attr` (the domain's most useful attribute, e.g. brightness for
+lights, current_temperature for climate) when non-empty.
 
-Returns `{total, filtered_count, returned, truncated, entities}`. `total` is the whole-instance entity count; `truncated: true` means `--limit` cut the results. Each entity has:
+A `--domain` or `--area` value that matches nothing adds a `hint` listing
+the valid domains or area names. A `--search` or `--state` miss gets no
+hint; broaden the search text instead.
 
-- `entity_id`, `name`, `state`, plus `area` and `key_attr` (domain-specific important attributes) when non-empty
+### `get`
 
-On zero matches a `hint` field lists the available domains/areas.
+A list of entities with all attributes, last_changed, last_updated,
+domain, area, name. Unknown entity_ids print a warning on stderr and are
+skipped; if none resolve, it exits 1.
 
-### `get` — Full entity details
+### `domains`
 
-Returns a list of entities with all attributes, last_changed, last_updated, domain, area, name. Unknown entity_ids print a warning on stderr and are skipped; if none resolve, exits 1.
+`{domains: [{domain, count}, …]}` sorted by count descending.
 
-### `domains` — Domain summary
+### `areas`
 
-Returns `{domains: [{domain, count}, …]}` sorted by count descending.
+`{areas: [{area_id, name, entity_count}, …]}` sorted by count descending.
+Only areas holding at least one entity are listed; the `hint` on a
+zero-match `--area` lists every area, including empty ones.
 
-### `areas` — Area summary
+### `scripts` and `automations`
 
-Returns `{areas: [{area_id, name, entity_count}, …]}` sorted by count descending.
+`{count, scripts: [...]}` / `{count, automations: [...]}`, each item
+`{entity_id, alias, state, mode, last_triggered}`, sorted by alias. A
+script's state is `on` while running; an automation's is `on` when
+enabled. Older UI-made scripts have numeric entity_ids, so `scripts` is how
+to map an alias to one.
 
-### `scripts` — Script listing
+## Not this skill
 
-Returns `{count, scripts: [{entity_id, alias, state, mode, last_triggered}, …]}` sorted by alias alphabetically. State is `on` (running) or `off` (idle).
-
-### `automations` — Automation listing
-
-Returns `{count, automations: [{entity_id, alias, state, mode, last_triggered}, …]}` sorted by alias alphabetically. State is `on` (enabled) or `off` (disabled).
-
-Changing names, areas, icons, visibility or entity_ids is the `update` and
-`rename` subcommands, covered by the UpdateEntity skill. Finding what uses
-an entity or device is `refs`, covered by the FindReferences skill. The
-integration an entity comes from, and its setup and options, are
-`ha-integrations` (ManageIntegration skill).
-
-## When to Use
-
-- **Before writing automations**: find entity IDs, check current states, discover available entities
-- **Before writing dashboards**: find entities to display, check what areas exist
-- **Debugging**: check entity states, verify entity existence
-- **Discovery**: explore what domains/areas/entities are available
-- **Finding scripts**: use `scripts` to list all scripts with their entity_id and alias (useful for scripts with numeric IDs)
-- **Finding automations**: use `automations` to list all automations with their entity_id, alias, and state (enabled/disabled)
-
-## Tips
-
-- To find a specific entity, start with `list --search TEXT` — never guess entity IDs
-- Always narrow `list` with `--domain`, `--area`, or `--search`: a bare `list` on a large instance returns hundreds of entities (capped at 100 by default, `truncated: true` tells you results were cut)
-- Use `domains` first to see what's available
-- Use `areas` to find area names
-- Use `get` for full attribute details when you need to know exact attribute names
-- The `key_attr` in `list` output shows the most important attribute per domain (e.g. brightness for lights, current_temperature for climate)
+- Changing names, areas, icons, visibility or entity_ids: `ha-entities update` / `rename` (UpdateEntity).
+- What uses an entity or device: `ha-entities refs` (FindReferences).
+- Which device owns an entity, which devices are in an area, labels: template functions via `ha-template` (TestTemplate).
+- Past states and statistics: `ha-history` (QueryHistory).
+- The integration an entity comes from, its setup and options: `ha-integrations` (ManageIntegration).

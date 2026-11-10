@@ -94,6 +94,19 @@ class Keys(Secrets):
         os.remove(self.path)
         self.assertEqual(self.run_ok("keys")["keys"], [])
 
+    def test_comments_for_hand_written_names(self):
+        self.write(
+            "# dashed\nmy-api-key: a\n"
+            "# dotted\nfoo.bar: b\n"
+            "# quoted\n'with space': c\n"
+            "cert: |\n  # inside the block\n  data\nafter_block: d\n"
+        )
+        notes = {e["key"]: e.get("comment") for e in self.run_ok("keys")["keys"]}
+        self.assertEqual(notes["my-api-key"], "dashed")
+        self.assertEqual(notes["foo.bar"], "dotted")
+        self.assertEqual(notes["with space"], "quoted")
+        self.assertIsNone(notes["after_block"])
+
     def test_broken_file_fails(self):
         self.write("a: [unclosed\n")
         self.assertIn("does not parse", self.run_fail("keys"))
@@ -129,6 +142,12 @@ class Webhook(Secrets):
         os.remove(self.path)
         out = self.run_ok("webhook", "first")
         self.assertEqual(self.read(), f"first: {out['webhook_id']}\n")
+        self.assertEqual(os.stat(self.path).st_mode & 0o777, 0o600)
+
+    def test_yaml_keyword_is_refused(self):
+        for key in ("yes", "On", "null"):
+            self.assertIn("YAML keyword", self.run_fail("webhook", key))
+        self.assertEqual(self.read(), SECRETS)
 
     def test_file_without_trailing_newline(self):
         self.write("a: b")
@@ -177,6 +196,19 @@ class Add(Secrets):
         self.assertIn("undone", self.run_fail("add", "k", "v"))
         self.assertEqual(self.read(), SECRETS)
 
+    def test_failed_read_back_on_a_new_file_removes_it(self):
+        os.remove(self.path)
+        real = self.tool.parse
+        calls = []
+
+        def parse(text):
+            calls.append(text)
+            return real(text) if len(calls) == 1 else {}
+
+        self.tool.parse = parse
+        self.assertIn("undone", self.run_fail("add", "k", "v"))
+        self.assertFalse(os.path.exists(self.path))
+
 
 class Get(Secrets):
     def test_prints_the_value(self):
@@ -215,6 +247,11 @@ class Fire(Secrets):
     def test_missing_key(self):
         self.assertIn("no 'nope'", self.run_fail("fire", "nope"))
         self.assertEqual(self.requests, [])
+
+    def test_numeric_id(self):
+        self.write("numeric_id: 12345\n")
+        self.run_ok("fire", "numeric_id")
+        self.assertEqual(self.requests[0][1], "/api/webhook/12345")
 
     def test_bad_json(self):
         self.assertIn(
