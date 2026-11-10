@@ -1,11 +1,10 @@
 ---
 name: QueryHistory
-description:
-  Query Home Assistant state history and long-term statistics. USE WHEN
-  questions are about the past — "when was the door last opened", "how long
-  was the light on", "average temperature yesterday", "energy usage this
-  week", "what was X at 3am", or any trend/duration/usage question. ALWAYS
-  use ha-history instead of the REST API or guessing from current state.
+description: Query recorded state history and long-term statistics. USE WHEN the
+  question is about the past, such as "when was the door last opened", "how
+  long was the heater on", "average temperature yesterday", "energy use this
+  week", "what was X at 3am", "since when is X unavailable". NOT FOR the
+  current value (FindEntities) or why an automation ran (DebugAutomation).
 ---
 
 # QueryHistory
@@ -13,10 +12,9 @@ description:
 Use `ha-history` to query the recorder's state history and long-term
 statistics over the WebSocket API.
 
-`ha-history` is on `PATH`: invoke it by bare name exactly as shown, never
-`./ha-history` or another path form — path forms fail and are
-permission-blocked. If a call errors, fix the invocation rather than
-dropping to ad-hoc `ha_lib` scripts.
+`ha-history` is on `PATH`: call it by bare name (a path form such as
+`./ha-history` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## Commands
 
@@ -100,8 +98,3 @@ ha-history stats-list --search energy
   the state the entity already had when the window started.
 - Ask for multiple entities in one call instead of one call each — it's one
   WebSocket round-trip either way.
-
-## Setup
-
-Requires the same long-lived token as `ha-entities` (HA_TOKEN env var or
-`/homeassistant/.claude/ha_token`); if missing, the tool prints setup steps.

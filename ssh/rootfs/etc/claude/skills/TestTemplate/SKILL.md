@@ -1,12 +1,12 @@
 ---
 name: TestTemplate
 description:
-  Render and verify Home Assistant Jinja templates against live state. USE
-  WHEN writing or debugging a template — before putting Jinja into an
-  automation, script, dashboard, or template sensor, when a template "doesn't
-  update", or to check what a template expression evaluates to right now.
-  ALWAYS verify templates with ha-template instead of reasoning about Jinja
-  from memory.
+  Render Jinja templates against live state, and answer device, area and
+  integration membership questions with template functions (area_devices,
+  device_entities, integration_entities) that ha-entities lacks. USE WHEN
+  writing or debugging a template, a template sensor doesn't update, or
+  "which devices are in the kitchen", "what device is sensor.x part of".
+  Verify with ha-template rather than reasoning about Jinja from memory.
 ---
 
 # TestTemplate
@@ -14,10 +14,9 @@ description:
 Use `ha-template` to render a Jinja template through the WebSocket
 `render_template` API — the exact engine automations and dashboards use.
 
-`ha-template` is on `PATH`: invoke it by bare name exactly as shown, never
-`./ha-template` or another path form — path forms fail and are
-permission-blocked. If a call errors, fix the invocation rather than
-dropping to ad-hoc `ha_lib` scripts.
+`ha-template` is on `PATH`: call it by bare name (a path form such as
+`./ha-template` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## Commands
 
@@ -53,6 +52,24 @@ ha-template '{{ trigger.to_state.state }}' \
 ha-template '{{ brightness > 128 }}' --var brightness=200
 ```
 
+## Membership questions
+
+`ha-entities` has no device or label commands. Template functions answer
+those questions from Home Assistant's own registries, so use them instead
+of reading `.storage`:
+
+```bash
+ha-template '{{ area_devices("kitchen") | map("device_attr", "name") | list }}'
+ha-template '{{ device_attr(device_id("sensor.hall_motion"), "name") }}'
+ha-template '{{ device_entities(device_id("sensor.hall_motion")) }}'
+ha-template '{{ integration_entities("zha") }}'
+ha-template '{{ label_entities("battery") }}'
+```
+
+Also `area_entities`, `area_name`, `areas()`, `labels()`. An entity without
+a device (`sun.sun`, most template sensors) has `device_id` none, and
+`device_attr` on it errors with "Must provide a device or entity ID".
+
 ## Examples
 
 ```bash
@@ -80,8 +97,3 @@ ha-template '{{ is_state("binary_sensor.front_door", "on") }}' --watch
   `"2"` — what template sensors and conditions actually receive.
 - `--watch` only re-renders on changes to listed listeners; a template with
   no listeners (pure literals) renders once and then stays silent.
-
-## Setup
-
-Requires the same long-lived token as `ha-entities` (HA_TOKEN env var or
-`/homeassistant/.claude/ha_token`); if missing, the tool prints setup steps.

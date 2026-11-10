@@ -1,14 +1,19 @@
 ---
-name: HomeAssistantReload
-description: Reload Home Assistant YAML configuration. USE WHEN user edits YAML files OR wants to apply config changes OR asks to reload automations/scripts/scenes OR asks to restart Home Assistant (check whether a reload suffices first). Uses ha-reload for hot reload, ha core restart only when necessary.
+name: ReloadConfig
+description:
+  Apply YAML changes with ha-reload, and decide when a full restart is
+  needed instead. USE WHEN a YAML file was edited, or the user asks to
+  reload config or restart Home Assistant; ha-reload hot-reloads, ha core
+  restart only when a reload cannot pick the change up.
 ---
 
-# HomeAssistantReload
+# ReloadConfig
 
 Intelligently reload Home Assistant configuration after YAML changes.
 
-`ha-reload` is on `PATH`: invoke it by bare name, never `./ha-reload` or
-another path form — path forms fail and are permission-blocked.
+`ha-reload` is on `PATH`: call it by bare name (a path form such as
+`./ha-reload` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## When to Use Each Command
 
@@ -60,14 +65,3 @@ After editing YAML files:
 
 - `ha-reload` reports success even when an individual domain fails to load — HA returns HTTP 200 regardless. If a change doesn't appear after a reload, check `ha core logs`.
 - If the change still isn't live and it involves a new integration or logger/recorder/http settings, use `ha core restart`.
-
-## Example
-
-**After adding a new integration**
-
-```
-User: "I added mqtt: to configuration.yaml"
-→ Run: ha core check     (configuration.yaml changed)
-→ Run: ha core restart
-→ Result: Full restart required for new integrations
-```

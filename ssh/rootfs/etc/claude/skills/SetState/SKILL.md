@@ -1,13 +1,11 @@
 ---
 name: SetState
-description:
-  Safely read and mutate Home Assistant virtual state — helpers (input_*),
-  counters, timers, var, and device-backed select/number/text — with value
-  validation and read-back verification. USE WHEN setting or toggling a
-  helper, changing an input_select option, setting an input_number, text,
-  or datetime value, starting/pausing/cancelling a timer, changing a
-  counter, or setting a var. ALWAYS use ha-state for these — ha-service
-  refuses helper domains and redirects here.
+description: Set helper and virtual state (input_*, counter, timer, var, device
+  select/number/text) with validation and read-back. USE WHEN turning a
+  helper on or off ("turn on vacation mode"), picking an option, setting a
+  number, text or datetime, or starting, pausing or cancelling a timer. NOT
+  FOR physical devices (CallService) or creating a helper (YAML, or
+  ManageIntegration).
 ---
 
 # SetState
@@ -16,10 +14,9 @@ Use `ha-state` to change value-settable state. It resolves the right
 service for the domain, validates the value against the entity's own
 constraints, and verifies the result by reading the state back.
 
-`ha-state` is on `PATH`: invoke it by bare name exactly as shown, never
-`./ha-state` or another path form — path forms fail and are
-permission-blocked. If a call errors, fix the invocation rather than
-dropping to ad-hoc `ha_lib` scripts.
+`ha-state` is on `PATH`: call it by bare name (a path form such as
+`./ha-state` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## Commands
 
@@ -70,8 +67,3 @@ those go through `ha-service call`. Reading arbitrary entities is
 - Never write state via HA's raw set-state API — it creates phantom
   states no device backs. Every `ha-state` mutation is a real service
   call.
-
-## Setup
-
-Requires the same long-lived token as `ha-entities` (HA_TOKEN env var or
-`/homeassistant/.claude/ha_token`); if missing, the tool prints setup steps.

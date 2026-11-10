@@ -535,7 +535,7 @@ ha-reload
 This is equivalent to Developer Tools → YAML → Quick Reload in the UI. It:
 
 - Reloads all hot-reloadable YAML domains at once (see the
-  `HomeAssistantReload` skill for the full list)
+  `ReloadConfig` skill for the full list)
 - Has no downtime (instant reload)
 
 Validate your changes first with `yamllint` (and `ha core check` for
@@ -547,11 +547,13 @@ integrations set up through `ha-integrations add` are live at once.
 
 Claude Code comes with these skills pre-installed. Claude picks the right one
 from what you ask; you can also invoke one directly, e.g.
-`/HomeAssistantReload`.
+`/ReloadConfig`. They are copied to `/share/.claude/skills` on every start.
+A skill the app no longer ships (renamed or retired) is removed from there
+again; skills you add yourself are never touched.
 
-- `HAEntities` — find entities, their states, areas, domains, scripts and
+- `FindEntities` — find entities, their states, areas, domains, scripts and
   automations (`ha-entities`).
-- `EntityReferences` — what uses an entity or device: automations, scripts,
+- `FindReferences` — what uses an entity or device: automations, scripts,
   scenes, groups, dashboards and templates (`ha-entities refs`).
 - `UpdateEntity` — rename entities and devices, move them to an area, set
   icons, hide or disable them, change entity_ids (`ha-entities update` /
@@ -563,20 +565,22 @@ from what you ask; you can also invoke one directly, e.g.
   fields; a run that stops part way aborts the flow and saves nothing.
   Passwords are masked in the output, and `"!secret NAME"` values are read
   from `secrets.yaml` without being shown to Claude.
-- `Secrets` — list secret names, generate and store webhook ids, test-fire a
+- `ManageSecrets` — list secret names, generate and store webhook ids, test-fire a
   webhook, add or read a secret (`ha-secrets`), so Claude never has to open
   `secrets.yaml`. Names, new webhook ids and test calls run without asking;
   a secret's value is only printed or stored after you confirm.
 - `CallService` — look up a service's real fields and call it (`ha-service`).
 - `SetState` — set helpers, counters, timers and vars with validation and
   read-back (`ha-state`).
-- `TestTemplate` — render Jinja templates against live state (`ha-template`).
+- `TestTemplate` — render Jinja templates against live state, and answer
+  which devices are in an area, which device owns an entity or which
+  entities come from an integration (`ha-template`).
 - `QueryHistory` — answer "when / how long / how often" from recorded history
   (`ha-history`).
 - `DebugAutomation` — find out why an automation did or didn't run, from its
   traces (`ha-trace`).
 - `EditDashboard` — change dashboards, views and cards (`ha-dashboard`).
-- `HomeAssistantReload` — apply YAML changes, choosing between `ha-reload`
+- `ReloadConfig` — apply YAML changes, choosing between `ha-reload`
   and `ha core restart` and validating first.
 
 ## Known issues and limitations

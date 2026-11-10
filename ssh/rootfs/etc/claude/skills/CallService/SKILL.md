@@ -1,11 +1,13 @@
 ---
 name: CallService
 description:
-  Discover and call Home Assistant services with real field metadata. USE
-  WHEN calling any service, turning things on/off beyond simple toggles,
-  looking up what parameters a service takes, or writing service calls into
-  automations/scripts. ALWAYS check ha-service show before writing service
-  data anywhere — never guess field names or values.
+  Turn things on or off, run scripts and scenes, set a thermostat or cover,
+  send a notification, or call any other service, and look up the fields a
+  service takes. USE WHEN "turn off the lights", "set the heating to 21",
+  "notify my phone", "pause the morning automation" (automation.turn_off),
+  or before writing service data into config. NOT FOR helpers, counters,
+  timers or var (SetState). Run ha-service show before writing service data;
+  never guess field names.
 ---
 
 # CallService
@@ -13,10 +15,9 @@ description:
 Use `ha-service` to discover services (with their real parameter specs) and
 to call them over the WebSocket API.
 
-`ha-service` is on `PATH`: invoke it by bare name exactly as shown, never
-`./ha-service` or another path form — path forms fail and are
-permission-blocked. If a call errors, fix the invocation rather than
-dropping to ad-hoc `ha_lib` scripts.
+`ha-service` is on `PATH`: call it by bare name (a path form such as
+`./ha-service` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## Commands
 
@@ -58,10 +59,10 @@ any extra flag.
   refuses these domains; use `ha-state set` (SetState skill), which
   validates the value and verifies the result. Only the administrative
   `reload`/`configure` services pass through.
-- Reading entity state or attributes — `ha-entities` (HAEntities).
+- Reading entity state or attributes — `ha-entities` (FindEntities).
 - Rendering or checking templates — `ha-template` (TestTemplate).
 - History and statistics questions — `ha-history` (QueryHistory).
-- Reloading YAML — `ha-reload` (HomeAssistantReload).
+- Reloading YAML — `ha-reload` (ReloadConfig).
 
 ## Dangerous services
 
@@ -102,8 +103,3 @@ ha-service call mqtt.publish --data-file payload.yaml
 - Calls wait for completion; long-running scripts may need `--timeout`.
 - Service data fields are NOT the same as entity attributes — always `show`
   the service rather than copying attribute names from `ha-entities`.
-
-## Setup
-
-Requires the same long-lived token as `ha-entities` (HA_TOKEN env var or
-`/homeassistant/.claude/ha_token`); if missing, the tool prints setup steps.

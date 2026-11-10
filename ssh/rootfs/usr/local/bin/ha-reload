@@ -3,7 +3,7 @@
 # Equivalent to Developer Tools → YAML → Quick Reload
 #
 # Reloads all hot-reloadable YAML domains at once (all-or-nothing); see the
-# HomeAssistantReload skill for the full domain list.
+# ReloadConfig skill for the full domain list.
 #
 # Use 'ha core restart' only for: new integrations, logger, recorder, http changes
 

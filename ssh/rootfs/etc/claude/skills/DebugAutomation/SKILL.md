@@ -1,11 +1,12 @@
 ---
 name: DebugAutomation
 description:
-  Debug Home Assistant automations and scripts using execution traces. USE WHEN
-  an automation didn't trigger, didn't fire, ran but did nothing, stopped
-  halfway, "why didn't the lights turn on", a script failed or was cancelled,
-  or any question about what an automation/script actually did when it ran.
-  ALWAYS use ha-trace instead of guessing from the YAML.
+  Inspect automation and script runs through their execution traces. USE
+  WHEN an automation didn't fire, fired twice, too often or at the wrong
+  time, ran but did nothing or stopped halfway, a script failed, or the
+  question is what an automation actually did ("why didn't the lights turn
+  on at sunset"). Check the trace with ha-trace instead of reasoning from
+  the YAML.
 ---
 
 # DebugAutomation
@@ -13,10 +14,9 @@ description:
 Use `ha-trace` to inspect Home Assistant execution traces — the recorded
 step-by-step history of automation and script runs.
 
-`ha-trace` is on `PATH`: invoke it by bare name exactly as shown, never
-`./ha-trace` or another path form — path forms fail and are
-permission-blocked. If a call errors, fix the invocation rather than
-dropping to ad-hoc `ha_lib` scripts.
+`ha-trace` is on `PATH`: call it by bare name (a path form such as
+`./ha-trace` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## Commands
 
@@ -39,7 +39,10 @@ for JSON.
    restart. Check the `state` field in the output (`off` = disabled), check
    `last_triggered`, then verify the trigger entity itself with
    `ha-entities get <trigger_entity>` — a trigger that never fires leaves no
-   trace.
+   trace. Then `ha-history changes <trigger_entity> --last 24h`
+   (QueryHistory) shows whether the triggering change happened at all.
+4. **Fired twice, too often or at the wrong time?** `ha-trace runs` lists
+   each run with its time; `show --run` on each tells which trigger fired.
 
 ## Outcome values
 
@@ -84,8 +87,3 @@ ha-trace show automation.morning_lights --run 8b46a3f60d0b4f568650bd10c4f0341c
 - YAML automations without an `id:` field get no traces at all; `ha-trace`
   reports this explicitly. Add a unique `id:` and reload to enable tracing.
 - Blueprint-based automations trace like any other automation.
-
-## Setup
-
-Requires the same long-lived token as `ha-entities` (HA_TOKEN env var or
-`/homeassistant/.claude/ha_token`); if missing, the tool prints setup steps.

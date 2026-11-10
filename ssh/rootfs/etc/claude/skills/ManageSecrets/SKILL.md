@@ -1,24 +1,23 @@
 ---
-name: Secrets
+name: ManageSecrets
 description:
-  Work with Home Assistant's secrets.yaml through ha-secrets — list secret
-  names, generate and store webhook ids, test-fire a webhook, add a secret
-  value, or read one — without opening the file. USE WHEN a task needs a
-  secret, an API key, a password or a webhook id; creating a webhook
-  trigger or anything that sends to one; testing or firing a webhook;
-  checking which secrets exist; adding a `!secret` reference. ALWAYS use
-  ha-secrets for these — never cat, grep, sed or append to secrets.yaml.
+  Work with secrets.yaml through ha-secrets, to list names, create or test-
+  fire a webhook id, or store or read an API key. USE WHEN a task needs a
+  secret, password or webhook id, or "make a webhook for X", "what URL does
+  my device post to", "store this token". Never cat, grep, Read or append to
+  secrets.yaml, and never curl a webhook by hand (use ha-secrets fire).
 ---
 
-# Secrets
+# ManageSecrets
 
 Use `ha-secrets` for everything that involves `secrets.yaml`. Any shell
 command that names the file asks the user first, every time, so reading
 it to look up a name or a webhook id costs a prompt that `ha-secrets`
 avoids.
 
-`ha-secrets` is on `PATH`: invoke it by bare name exactly as shown, never
-`./ha-secrets` or another path form.
+`ha-secrets` is on `PATH`: call it by bare name (a path form such as
+`./ha-secrets` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## Commands
 

@@ -1,14 +1,12 @@
 ---
 name: UpdateEntity
 description:
-  Change how an entity or device is registered in Home Assistant — display
-  name, area, icon, hidden or disabled, and its entity_id — through the
-  registry API, with before/after output and read-back verification. USE
-  WHEN renaming an entity or device, changing its friendly name, moving it
-  to another area/room, setting an icon, hiding or unhiding, disabling or
-  enabling, or changing an entity_id. ALWAYS use ha-entities update/rename
-  for these — never edit .storage/core.entity_registry or
-  core.device_registry.
+  Change how an entity or device is registered (name, area, icon, hidden or
+  disabled flag, entity_id) through the registry API. USE WHEN renaming an
+  entity or device, moving it to another area, setting an icon, hiding it,
+  or changing an entity_id. NOT FOR pausing an automation
+  (automation.turn_off via CallService; a registry disable removes it) or
+  disabling an integration (ManageIntegration).
 ---
 
 # UpdateEntity
@@ -17,9 +15,9 @@ Use `ha-entities update` and `ha-entities rename` to change registry
 settings. They go through Home Assistant's WebSocket registry API, which
 applies changes live with no restart and no risk to the `.storage` files.
 
-`ha-entities` is on `PATH`: invoke it by bare name exactly as shown, never
-`./ha-entities` or another path form. If a call errors, fix the invocation
-rather than dropping to ad-hoc `ha_lib` scripts or editing `.storage`.
+`ha-entities` is on `PATH`: call it by bare name (a path form such as
+`./ha-entities` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## Commands
 
@@ -74,7 +72,7 @@ ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling
    `verified`. A mismatch exits 1 and names the fields that differ.
 4. **For `rename`**, first run `ha-entities refs` on every entity you
    plan to rename (`refs <entity> --device` covers all of a device's
-   entities in one call; see the EntityReferences skill) and show the user
+   entities in one call; see the FindReferences skill) and show the user
    what uses them. Then rename. Home Assistant does not rewrite YAML:
    update every listed YAML file with the Edit tool and run `ha-reload`.
    References under `.storage` are UI-made dashboards (fix with
@@ -100,9 +98,5 @@ ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling
 - `rename` always prompts for confirmation, because a renamed entity_id
   breaks every automation, script and dashboard that still uses the old
   one.
-
-## Setup
-
-Requires the same long-lived token as `ha-entities` (HA_TOKEN env var or
-`/homeassistant/.claude/ha_token`), and the token's user must be an
-administrator, since the registry API is admin-only.
+- The token's user must be an administrator; the registry API is
+  admin-only.

@@ -1,17 +1,23 @@
 ---
-name: HAEntities
+name: FindEntities
 description:
-  Query Home Assistant entity states, areas, domains, scripts, and automations.
-  ALWAYS use this skill instead of calling the HA REST or WebSocket API directly,
-  reading .storage files, or asking the user for entity IDs. Use before writing any
-  automation, script, or dashboard that references entities.
+  Look up entities and their current state with ha-entities, such as finding
+  an entity_id by name, reading a state or attribute (battery, temperature,
+  open/closed), or listing entities, areas, domains, scripts and
+  automations. USE WHEN "is the garage door open", "what's the battery of
+  X", "which lights are on", "find the kitchen lamp", and before writing
+  anything that names an entity. NOT FOR the past (QueryHistory), what uses
+  an entity (FindReferences), or device and area membership (TestTemplate).
+  Never guess entity IDs, curl the API or read .storage for this.
 ---
 
-# HAEntities
+# FindEntities
 
 Use `ha-entities` to query Home Assistant entity states, areas, domains, scripts, and automations over the WebSocket API.
 
-`ha-entities` is on `PATH`: invoke it by bare name exactly as shown, never `./ha-entities` or another path form — path forms fail and are permission-blocked. If a call errors, fix the invocation rather than dropping to ad-hoc `ha_lib` scripts.
+`ha-entities` is on `PATH`: call it by bare name (a path form such as
+`./ha-entities` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## Commands
 
@@ -101,7 +107,7 @@ Returns `{count, automations: [{entity_id, alias, state, mode, last_triggered}, 
 
 Changing names, areas, icons, visibility or entity_ids is the `update` and
 `rename` subcommands, covered by the UpdateEntity skill. Finding what uses
-an entity or device is `refs`, covered by the EntityReferences skill. The
+an entity or device is `refs`, covered by the FindReferences skill. The
 integration an entity comes from, and its setup and options, are
 `ha-integrations` (ManageIntegration skill).
 
@@ -122,4 +128,3 @@ integration an entity comes from, and its setup and options, are
 - Use `areas` to find area names
 - Use `get` for full attribute details when you need to know exact attribute names
 - The `key_attr` in `list` output shows the most important attribute per domain (e.g. brightness for lights, current_temperature for climate)
-- A long-lived HA token is required (one-time setup); if it's missing, the tool exits with the exact setup instructions

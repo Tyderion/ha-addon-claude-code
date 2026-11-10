@@ -1,15 +1,11 @@
 ---
 name: ManageIntegration
 description:
-  List, inspect, add, configure, rename, reload, disable and delete Home
-  Assistant integrations (config entries) through Home Assistant's own
-  config entry API, with labelled form fields, masked passwords and
-  read-back verification. USE WHEN adding or setting up an integration,
-  changing an integration's options or configuration (host, port, polling,
-  credentials), renaming an integration entry, reloading one, finding which
-  integrations are failing, listing discovered devices, disabling,
-  enabling, or removing an integration. ALWAYS use ha-integrations for
-  these — never read or edit .storage/core.config_entries.
+  Add, configure, reload, disable or delete integrations (config entries)
+  and config-flow helpers through ha-integrations. USE WHEN setting up an
+  integration, changing its options or credentials, an integration failed or
+  keeps retrying, a device "stopped working" or is unavailable, or listing
+  discovered devices. Never read or edit .storage/core.config_entries.
 ---
 
 # ManageIntegration
@@ -19,9 +15,9 @@ instance is a config entry; Home Assistant stores them in
 `.storage/core.config_entries`, which is off limits. This tool goes through
 the same API as the UI, so changes apply live, usually without a restart.
 
-`ha-integrations` is on `PATH`: invoke it by bare name exactly as shown,
-never `./ha-integrations` or another path form. If a call errors, fix the
-invocation rather than dropping to ad-hoc `ha_lib` scripts or `curl`.
+`ha-integrations` is on `PATH`: call it by bare name (a path form such as
+`./ha-integrations` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## Commands
 
@@ -110,20 +106,20 @@ ha-integrations delete hue --dry-run           # what gets removed
 
 - **Before `delete` or `disable`**, run it with `--dry-run`, then check
   what uses the listed entities with `ha-entities refs <entity> --device`
-  (EntityReferences skill) and show the user. Both commands ask the user
+  (FindReferences skill) and show the user. Both commands ask the user
   for confirmation; a `--dry-run` does not.
-- **Passwords:** prefer `"!secret NAME"` values when the user keeps the
-  credential in `secrets.yaml`. The tool reads it and sends it to Home
-  Assistant without printing it. Otherwise pass what the user gave you;
-  it is masked in the output.
+- **Passwords:** check `ha-secrets keys --search <domain>` first
+  (ManageSecrets skill). If a matching key exists, pass `"!secret NAME"`:
+  the tool reads it and sends it without printing it. Otherwise ask the
+  user, and pass what they give you; it is masked in the output.
 - A config-flow integration added here is live at once; no `ha core
 restart` is needed. Integrations that are only configured in YAML are not
   listed by `handlers` and are set up in `configuration.yaml` instead.
 - Subentries (for example extra conversation agents) are listed by `show`
   but are changed in the UI.
-
-## Setup
-
-Requires the same long-lived token as `ha-entities` (HA_TOKEN env var or
-`/homeassistant/.claude/ha_token`), and the token's user must be an
-administrator, since the config entry API is admin-only.
+- **Helpers** set up through a config flow (template, group, threshold,
+  utility meter, min/max) are listed by `handlers --helpers` and added
+  like any integration. Toggles, dropdowns and other `input_*` helpers
+  are YAML plus `ha-reload`.
+- The token's user must be an administrator; the config entry API is
+  admin-only.

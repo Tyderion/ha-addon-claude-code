@@ -25,6 +25,11 @@ readonly CLAUDE_BIN=/root/.local/bin/claude
 readonly CLAUDE_VERSIONS=/root/.local/share/claude/versions
 readonly CLAUDE_PERSISTENT_VERSIONS=/data/claude-versions
 readonly CLAUDE_LEGACY_VERSIONS=/share/.claude-versions
+readonly CLAUDE_SKILLS=/etc/claude/skills
+readonly CLAUDE_PERSISTENT_SKILLS=/share/.claude/skills
+readonly CLAUDE_SKILL_MARKER=.addon-skill
+# Skills shipped before the copies carried CLAUDE_SKILL_MARKER, since renamed
+readonly -a CLAUDE_RETIRED_SKILLS=(HAEntities HomeAssistantReload EntityReferences)
 
 # Prints the newest Claude Code version in a versions directory. Only names
 # that look like a version count, so an interrupted download or a copy in
@@ -261,11 +266,27 @@ if [[ -n ${session_name} ]]; then
     bashio::log.info "Claude Code session name: ${session_name}"
 fi
 
-# Copy/update Claude Code skills on every start
-if bashio::fs.directory_exists "/etc/claude/skills"; then
-    mkdir -p "${CLAUDE_PERSISTENT_PATH}/skills"
-    cp -r /etc/claude/skills/* "${CLAUDE_PERSISTENT_PATH}/skills/" 2>/dev/null \
-        || bashio::log.warning 'Failed to copy Claude skills'
+# Copy/update Claude Code skills on every start. Each copy carries a marker
+# file, so a skill the image no longer ships (renamed or retired) is removed
+# again, while skills the user added are never touched. The few skills shipped
+# before the marker existed are removed by name.
+if bashio::fs.directory_exists "${CLAUDE_SKILLS}"; then
+    mkdir -p "${CLAUDE_PERSISTENT_SKILLS}"
+    for skill in "${CLAUDE_PERSISTENT_SKILLS}"/*/; do
+        name=$(basename "${skill}")
+        [[ -d ${CLAUDE_SKILLS}/${name} ]] && continue
+        if [[ -f ${skill}${CLAUDE_SKILL_MARKER} \
+            || " ${CLAUDE_RETIRED_SKILLS[*]} " == *" ${name} "* ]]; then
+            rm -rf "${skill}" \
+                && bashio::log.info "Removed retired Claude skill: ${name}"
+        fi
+    done
+    for skill in "${CLAUDE_SKILLS}"/*/; do
+        name=$(basename "${skill}")
+        { cp -r "${skill%/}" "${CLAUDE_PERSISTENT_SKILLS}/" \
+            && touch "${CLAUDE_PERSISTENT_SKILLS}/${name}/${CLAUDE_SKILL_MARKER}"; } \
+            || bashio::log.warning "Failed to copy Claude skill ${name}"
+    done
 fi
 
 # Write CLAUDE.md to homeassistant config if configured

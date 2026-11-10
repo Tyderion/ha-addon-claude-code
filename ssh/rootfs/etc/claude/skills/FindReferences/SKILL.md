@@ -1,18 +1,15 @@
 ---
-name: EntityReferences
-description: Find everything that uses a Home Assistant entity or device —
-  automations, scripts, scenes, groups, persons, dashboards, templates and
-  YAML packages — by combining Home Assistant's own Related search with a
-  scan of the config files. USE WHEN asking what uses / references /
-  depends on an entity or device, where an entity is used, whether it is
-  safe to rename, remove, replace or disable an entity or device, before
-  changing an entity_id, before removing a device or integration, or when
-  cleaning up unused entities. ALWAYS use ha-entities refs for this —
-  never grep /homeassistant by hand, which misses UI dashboards, UI
-  helpers and device-id references.
+name: FindReferences
+description:
+  Find everything that uses an entity or device (automations, scripts,
+  scenes, groups, dashboards, templates, YAML). USE WHEN asking what uses or
+  depends on an entity or device, whether it is safe to rename, remove,
+  replace or disable one, or when cleaning up unused entities. Use ha-
+  entities refs, not grep, which misses UI dashboards and device-id
+  references.
 ---
 
-# EntityReferences
+# FindReferences
 
 Use `ha-entities refs` to answer "what uses this?". It merges two sources:
 
@@ -24,8 +21,9 @@ Use `ha-entities refs` to answer "what uses this?". It merges two sources:
   which the Related search does not see, and dashboards, which it does
   not cover at all.
 
-`ha-entities` is on `PATH`: invoke it by bare name exactly as shown, never
-`./ha-entities` or another path form.
+`ha-entities` is on `PATH`: call it by bare name (a path form such as
+`./ha-entities` is rewritten to it anyway). If a call errors, fix the call
+rather than writing ad-hoc `ha_lib` scripts or `curl`.
 
 ## Commands
 
