@@ -1,15 +1,11 @@
 ---
 name: QueryHistory
-description: Query recorded state history and long-term statistics. USE WHEN the
-  question is about the past, such as "when was the door last opened", "how
-  long was the heater on", "average temperature yesterday", "energy use this
-  week", "what was X at 3am", "since when is X unavailable". NOT FOR the
-  current value (FindEntities) or why an automation ran (DebugAutomation).
+description: Query recorded state history, the logbook, and long-term statistics. USE WHEN the question is about the past, such as "when was the door last opened", "how long was the heater on", "average temperature yesterday", "energy use this week", "what was X at 3am", "since when is X unavailable", "who or what turned X on", "why did X change", "was it an automation or a person", "what did my call change". NOT FOR the current value (FindEntities) or the steps inside one automation run (DebugAutomation).
 ---
 
 # QueryHistory
 
-Use `ha-history` to query the recorder's state history and long-term
+Use `ha-history` to query the recorder's state history, the logbook and long-term
 statistics over the WebSocket API.
 
 `ha-history` is on `PATH`: call it by bare name (a path form such as
@@ -23,6 +19,9 @@ ha-history changes <entity_id> ... [--last N[mhdw] | --from ISO] [--to ISO] [--l
 ha-history stats <id> ...          [--last N[mhdw] | --from ISO] [--to ISO]
                                    [--period 5minute|hour|day|week|month]
 ha-history stats-list [--search TEXT] [--limit N]
+ha-history logbook [<entity_id> ...] [--device ID ...] [--context ID]
+                   [--kind KIND ...] [--exclude GLOB ...]
+                   [--last N[mhdw] | --from ISO] [--to ISO] [--limit N]
 ```
 
 All commands output YAML by default; add `--format json` for JSON. Every
@@ -34,7 +33,7 @@ command takes several ids in one call; prefer that to one call per entity.
 2026-08-04T12:00` is the 8 h before that moment. `--from`/`--to` take ISO
   dates or datetimes, read as local time unless they carry an offset; a
   bare date is local midnight. `--last` and `--from` together is an error.
-- **Limits:** `--limit` is 50 for `changes` and 100 for `stats-list`; `0`
+- **Limits:** `--limit` is 50 for `changes` and `logbook` and 100 for `stats-list`; `0`
   means unlimited.
 
 ## Picking the right command
@@ -50,6 +49,7 @@ command takes several ids in one call; prefer that to one call per entity.
   short-term statistics, purged with raw history. Only numeric entities
   with a `state_class` have statistics. `stats` also takes any id
   `stats-list` returns, including external statistics (`source:id`).
+- **`logbook`**: _who or what_ changed something. Each change comes with its cause: a user, an automation, a script, a service call, another entity, an event, or nothing recorded. Same retention as `changes`. Scope it to the entities in question; an unscoped window drowns in automations that run every few minutes.
 
 ## Output
 
@@ -81,6 +81,29 @@ usually what "how much energy did I use" asks for.
 consumption, `unknown` = neither) and, when HA has them, `name` and
 `unit`. `--search` is a case-insensitive substring match on id or name.
 
+### `logbook`
+
+`{returned, truncated, entries}`, newest first, and for an unscoped query a `by_entity` list first (the 15 busiest entity ids, counted after `--kind`/`--exclude` and before `--limit`), which shows what to `--exclude`. Each entry has `when`, `kind` and `cause`:
+
+- `kind` is what the row is: `state` (an entity changed; `entity_id`, `state`, and `attributes.event_type` for `event.*` entities), `run` (an automation or script started; `entity_id`, `name`, `message` such as `triggered by time pattern`, and `context_id`), or `message` (any other logbook line, e.g. Home Assistant starting).
+- `cause.kind` is why it happened:
+  - `user`: someone acted through HA, with `service` when it was a service call. `user.name` names them; `system_generated: true` means Supervisor or an add-on, not a person. `token_user: true` means the user this tool's token belongs to. **That is usually the person you're talking to, and it is also you:** your own `ha-service` calls carry the same user, so `token_user` cannot tell their clicks from your calls. Only a context id can (see below).
+  - `automation` / `script`: `name`, `entity_id`, and for automations the `trigger` (`time pattern`, `state of binary_sensor.x`, `event 'shelly.click'`). A `user` may ride along when a person's action set the automation off.
+  - `service`: a service call with no user, e.g. from an integration or another add-on.
+  - `entity`: another entity's change caused it (`entity_id`, `state`), e.g. a group following its member.
+  - `event`: an integration event (`event_type`, `domain`, `message`), e.g. `shelly.click` for a physical button wired through HA.
+  - `none`: no cause recorded. Usually the device itself, a physical control, or the integration reporting an outside change. Not proof, though: HA drops the cause when a device reports its new state more than 5 s after the call, and an unscoped query misses causes from before its window. Before saying "nobody did it", re-query scoped to that entity, and check `ha-trace list` for an automation whose `last_triggered` matches.
+
+`--kind` keeps entries whose row kind or cause kind matches (repeatable): `--kind user` is "did anyone do anything", `--kind none` is "what did the devices do on their own". `--exclude` drops entity ids matching a glob (`--exclude 'automation.beer_*'`).
+
+**Following a cause.** Only `run` entries carry a `context_id`; state entries never do. `ha-history logbook --context <id>` (alone: it cannot be combined with entities or `--device`; its window defaults to the last 10 days) lists everything that context did. Three ways to get an id:
+
+- `ha-history logbook automation.<x>` over the time in question returns that automation's runs.
+- `ha-trace show <automation>` prints its run's `context_id` (DebugAutomation).
+- `ha-service call` prints the `context_id` of the call it made, so `--context` on it shows exactly what your own call changed.
+
+An automation started by another automation runs in a child context, so each hop needs its own `--context`.
+
 ## Examples
 
 ```bash
@@ -98,6 +121,15 @@ ha-history stats sensor.energy_total --from 2026-08-05 --period hour
 
 # What can I get statistics for?
 ha-history stats-list --search energy
+
+# What turned on the kitchen light around 3am?
+ha-history logbook light.kitchen --from 2026-08-05T02:30 --to 2026-08-05T03:30
+
+# Did anyone do anything overnight?
+ha-history logbook --kind user --from 2026-08-04T23:00 --to 2026-08-05T07:00
+
+# Everything one automation run changed
+ha-history logbook --context 01K1Z9...
 ```
 
 ## Gotchas
@@ -113,6 +145,7 @@ ha-history stats-list --search energy
   _changes_, not every recorder row. The newest change's `duration` runs
   to the window end; the oldest entry is the state the entity already had
   when the window started, not a change.
+- `logbook` skips numeric sensors and entities excluded from the logbook, and lists only real state changes (no attribute-only updates, no window-start state). An entity with no entries prints a warning naming the likely reason; use `changes` for those.
 - "Since when is X unavailable": `changes --last 10d`. If the oldest entry
   is already `unavailable`, the outage predates the raw retention; for an
   entity with statistics, the last `stats` bucket with data dates the loss

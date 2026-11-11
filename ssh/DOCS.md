@@ -578,8 +578,8 @@ again; skills you add yourself are never touched.
 - `TestTemplate` — render Jinja templates against live state, and answer
   which devices are in an area, which device owns an entity or which
   entities come from an integration (`ha-template`).
-- `QueryHistory` — answer "when / how long / how often" from recorded history
-  (`ha-history`).
+- `QueryHistory` — answer "when / how long / how often" from recorded history,
+  and "who or what changed it" from the logbook (`ha-history`).
 - `DebugAutomation` — find out why an automation did or didn't run, from its
   traces (`ha-trace`).
 - `EditDashboard` — change dashboards, views and cards (`ha-dashboard`).

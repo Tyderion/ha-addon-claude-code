@@ -45,10 +45,11 @@ exactly. All commands output YAML by default; add `--format json` for JSON.
 <trigger_entity>` for its current state, then `ha-history changes
 <trigger_entity> --last 24h` (QueryHistory) to see whether the
    triggering change happened at all. A trigger that never fires leaves no
-   trace.
+   trace. `ha-history logbook <trigger_entity>` also shows what caused each of its changes.
 4. **Fired twice, too often or at the wrong time?** `ha-trace runs` lists
    every stored run with its `start` and `trigger`, which usually answers
    it; `show --run <id>` only when you need one run's steps.
+5. **What did a run change?** `show` prints the run's `context_id`; `ha-history logbook --context <id>` (QueryHistory) lists every entity that run changed. An automation the run started has its own context.
 
 ## Outcome values
 

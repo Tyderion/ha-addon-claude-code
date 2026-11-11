@@ -228,8 +228,12 @@ def cmd_show(args):
         "entity_id": state_obj["entity_id"],
         "alias": _alias(state_obj),
         **_run_summary(full),
-        "steps": steps,
     }
+    # The run's context: `ha-history logbook --context <id>` lists what it changed
+    context_id = (full.get("context") or {}).get("id")
+    if context_id:
+        output["context_id"] = context_id
+    output["steps"] = steps
     print_output(output, args.format)
 
 

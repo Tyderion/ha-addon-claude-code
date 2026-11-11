@@ -298,8 +298,14 @@ def cmd_call(args):
         output["target"] = target
     if data:
         output["data"] = data
-    if isinstance(result, dict) and result.get("response") is not None:
-        output["response"] = result["response"]
+    if isinstance(result, dict):
+        if result.get("response") is not None:
+            output["response"] = result["response"]
+        # The call's own context: `ha-history logbook --context <id>` lists
+        # exactly what this call changed
+        context_id = (result.get("context") or {}).get("id")
+        if context_id:
+            output["context_id"] = context_id
     print_output(output, args.format)
 
 

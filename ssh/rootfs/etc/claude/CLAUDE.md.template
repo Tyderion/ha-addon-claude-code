@@ -48,6 +48,7 @@ Entities, areas, services, and integrations change without this file changing. *
 | Creating an area or label | The Home Assistant UI; there is no tool for it, so say so |
 | Does this Jinja template work? What does it evaluate to? | `TestTemplate` |
 | What happened in the past? How long / how often / when last? | `QueryHistory` |
+| Who or what changed X? Was it an automation, a person, the device itself? | `QueryHistory` (`ha-history logbook`) |
 | Something is unavailable or stopped working | `FindEntities get`, then `ManageIntegration` (`list --failing`), then `QueryHistory` for since when |
 | Why didn't this automation fire, or what did it actually do? | `DebugAutomation` (traces, not YAML guesswork) |
 | Renaming an entity or device, moving it to an area, icon, hide/disable, changing an entity_id | `UpdateEntity` (`ha-entities update` / `rename`) |

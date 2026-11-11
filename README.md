@@ -26,7 +26,7 @@ This app runs as root with access to almost all tools and hardware of your syste
 | `UpdateEntity`      | `ha-entities update` / `rename` | Rename entities and devices, move them to areas, hide, disable, change entity_ids   |
 | `CallService`       | `ha-service`                    | Look up a service's real fields and call it                                         |
 | `SetState`          | `ha-state`                      | Set helpers, counters, timers and vars with validation and read-back                |
-| `QueryHistory`      | `ha-history`                    | Recorded history and long-term statistics                                           |
+| `QueryHistory`      | `ha-history`                    | Recorded history, who or what changed it, and long-term statistics                  |
 | `DebugAutomation`   | `ha-trace`                      | Why an automation did or didn't run, from its traces                                |
 | `TestTemplate`      | `ha-template`                   | Render Jinja against live state; device, area and label membership                  |
 | `ManageIntegration` | `ha-integrations`               | Add, configure, reload, disable or remove integrations through config flows         |
