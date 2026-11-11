@@ -68,6 +68,7 @@ class Window(unittest.TestCase):
 
 T0 = datetime.fromisoformat("2026-11-11T03:00:00+00:00").timestamp()
 
+ULID = "01K9ZJ3M4QF7B2R8X5W6N1T0VD"
 GABRIEL = "a" * 32
 SUPERVISOR = "b" * 32
 
@@ -173,6 +174,7 @@ class Logbook(unittest.TestCase):
         self.rows = list(ALL_ROWS)
         self.auth_list_fails = False
         self.states = {}
+        self.paths = []
 
         def ha_result(command):
             self.commands.append(command)
@@ -187,6 +189,7 @@ class Logbook(unittest.TestCase):
             raise AssertionError(f"unexpected command {command}")
 
         def ha_http(method, path, body=None):
+            self.paths.append(path)
             return self.states.get(path.rsplit("/", 1)[1])
 
         self.tool = load_tool("ha-history", ha_result=ha_result, ha_http=ha_http)
@@ -228,9 +231,9 @@ class Logbook(unittest.TestCase):
         self.assertEqual(self.commands[0]["device_ids"], ["d1"])
 
     def test_context_alone_defaults_to_ten_days(self):
-        self.run_logbook("--context", "01M7RUN")
+        self.run_logbook("--context", ULID)
         command = self.commands[0]
-        self.assertEqual(command["context_id"], "01M7RUN")
+        self.assertEqual(command["context_id"], ULID)
         start = datetime.fromisoformat(command["start_time"])
         end = datetime.fromisoformat(command["end_time"])
         self.assertEqual(end - start, timedelta(days=10))
@@ -244,6 +247,15 @@ class Logbook(unittest.TestCase):
             code, _, err = self.run_logbook(*argv)
             self.assertEqual(code, 1)
             self.assertIn("--context cannot be combined", err)
+            self.assertEqual(self.commands, [])
+
+    def test_non_ulid_context_is_refused_before_any_call(self):
+        # HA drops a malformed id and returns the whole logbook unfiltered
+        for bad in ("r" * 32, GABRIEL, ULID[:-1]):
+            self.commands.clear()
+            code, _, err = self.run_logbook("--context", bad)
+            self.assertEqual(code, 1)
+            self.assertIn("not a context id", err)
             self.assertEqual(self.commands, [])
 
     # --- causes ---
@@ -419,6 +431,33 @@ class Logbook(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("numeric sensor", err)
 
+    def test_device_class_sensor_is_named_as_numeric(self):
+        self.rows = []
+        self.states["sensor.temp"] = {"attributes": {"device_class": "temperature"}}
+        code, _, err = self.run_logbook("sensor.temp")
+        self.assertEqual(code, 1)
+        self.assertIn("numeric sensor", err)
+
+    def test_non_numeric_device_class_is_not(self):
+        self.rows = []
+        self.states["sensor.when"] = {"attributes": {"device_class": "timestamp"}}
+        code, _, err = self.run_logbook("sensor.when")
+        self.assertEqual(code, 1)
+        self.assertIn("did not change in this window", err)
+
+    def test_continuous_domain_is_named(self):
+        self.rows = []
+        code, _, err = self.run_logbook("counter.drinks")
+        self.assertEqual(code, 1)
+        self.assertIn("never records counter entities", err)
+
+    def test_odd_sensor_id_is_quoted_and_the_rest_still_prints(self):
+        self.rows = [BY_NOTHING]
+        code, out, err = self.run_logbook("switch.plug", "sensor.living room")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.paths, ["/api/states/sensor.living%20room"])
+        self.assertEqual(out["returned"], 1)
+
     def test_one_missing_entity_only_warns(self):
         self.rows = [BY_NOTHING]
         code, out, err = self.run_logbook("switch.plug", "light.nothing")
@@ -428,9 +467,10 @@ class Logbook(unittest.TestCase):
 
     def test_unknown_context_fails(self):
         self.rows = []
-        code, _, err = self.run_logbook("--context", "nope")
+        code, _, err = self.run_logbook("--context", ULID)
         self.assertEqual(code, 1)
         self.assertIn("no logbook entries for context", err)
+        self.assertIn("child contexts", err)
 
     def test_empty_unscoped_window_is_not_an_error(self):
         self.rows = []

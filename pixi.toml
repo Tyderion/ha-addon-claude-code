@@ -19,7 +19,7 @@ fmt-sh = "shfmt -w -i 4 -bn -ci -sr ssh/"
 fmt-check-sh = "shfmt -d -i 4 -bn -ci -sr ssh/"
 fmt-py = "ruff format ssh/"
 test = { depends-on = ["test-guard", "test-ask-sensitive", "test-rewrite-tool-path", "test-claude-wrapper", "test-py"] }
-test-py = "python3 ssh/tests/test_ha_entities.py && python3 ssh/tests/test_ha_integrations.py && python3 ssh/tests/test_ha_lib.py && python3 ssh/tests/test_ha_history.py && python3 ssh/tests/test_ha_secrets.py && python3 ssh/tests/test_context_ids.py"
+test-py = "python3 -m unittest discover -s ssh/tests"
 test-ask-sensitive = "bash ssh/tests/ask-sensitive.test.sh"
 test-guard = "bash ssh/tests/guard-destructive.test.sh"
 test-rewrite-tool-path = "bash ssh/tests/rewrite-tool-path.test.sh"

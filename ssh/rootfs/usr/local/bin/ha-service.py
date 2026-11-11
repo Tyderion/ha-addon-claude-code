@@ -301,8 +301,8 @@ def cmd_call(args):
     if isinstance(result, dict):
         if result.get("response") is not None:
             output["response"] = result["response"]
-        # The call's own context: `ha-history logbook --context <id>` lists
-        # exactly what this call changed
+        # The call's own context: `ha-history logbook --context <id>` lists the
+        # state changes made in it (not those of automations it set off)
         context_id = (result.get("context") or {}).get("id")
         if context_id:
             output["context_id"] = context_id

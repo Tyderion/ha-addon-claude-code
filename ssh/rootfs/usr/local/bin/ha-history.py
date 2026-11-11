@@ -27,6 +27,7 @@ import fnmatch
 import os
 import re
 import sys
+import urllib.parse
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
@@ -43,6 +44,13 @@ from ha_lib import (
 ROW_KINDS = ("state", "run", "message")
 CAUSE_KINDS = ("user", "automation", "script", "service", "entity", "event", "none")
 BY_ENTITY_TOP = 15
+# Context ids are ULIDs; HA silently drops any other value and returns the
+# whole unfiltered logbook, so a run_id or user id must never reach it
+CONTEXT_ID_RE = re.compile(r"[0-9A-Za-z]{26}")
+# Domains the logbook never records (HA's ALWAYS_CONTINUOUS_DOMAINS), and the
+# sensor device classes it still treats as non-numeric
+CONTINUOUS_DOMAINS = ("counter", "image", "proximity")
+NON_NUMERIC_DEVICE_CLASSES = ("date", "enum", "timestamp")
 
 
 def humanize(seconds):
@@ -97,6 +105,14 @@ def parse_window(args, default_last):
     if start >= end:
         raise RuntimeError("window start must be before its end")
     return start, end
+
+
+def window_out(start, end):
+    """The resolved window as printed: local-time ISO strings."""
+    return {
+        "from": start.astimezone().isoformat(),
+        "to": end.astimezone().isoformat(),
+    }
 
 
 def cmd_changes(args):
@@ -187,10 +203,7 @@ def cmd_changes(args):
         sys.exit(1)
 
     output = {
-        "window": {
-            "from": start.astimezone().isoformat(),
-            "to": end.astimezone().isoformat(),
-        },
+        "window": window_out(start, end),
         "entities": entities,
     }
     print_output(output, args.format)
@@ -252,10 +265,7 @@ def cmd_stats(args):
         sys.exit(1)
 
     output = {
-        "window": {
-            "from": start.astimezone().isoformat(),
-            "to": end.astimezone().isoformat(),
-        },
+        "window": window_out(start, end),
         "entities": entities,
     }
     print_output(output, args.format)
@@ -332,17 +342,22 @@ def describe_cause(row):
             "name": row.get("context_name"),
             "entity_id": row.get("context_entity_id"),
         }
-    elif event_type == "call_service" or (user_id and not event_type):
-        cause = {"kind": "user" if user_id else "service"}
-        if event_type == "call_service":
-            cause["service"] = (
-                f"{row.get('context_domain')}.{row.get('context_service')}"
-            )
+    elif event_type == "call_service":
+        cause = {
+            "kind": "user" if user_id else "service",
+            "service": f"{row.get('context_domain')}.{row.get('context_service')}",
+        }
     elif event_type:
-        cause = {"kind": "event", "event_type": event_type}
-        for key in ("domain", "name", "message", "source", "entity_id"):
-            if row.get(f"context_{key}"):
-                cause[key] = row[f"context_{key}"]
+        cause = {
+            "kind": "event",
+            "event_type": event_type,
+            **{
+                key: row.get(f"context_{key}")
+                for key in ("domain", "name", "message", "source", "entity_id")
+            },
+        }
+    elif user_id:
+        cause = {"kind": "user"}
     elif row.get("context_entity_id"):
         cause = {
             "kind": "entity",
@@ -381,11 +396,10 @@ def resolve_users(entries):
     if not with_user:
         return
 
-    users = {}
     try:
-        for u in ha_result({"type": "config/auth/list"}) or []:
-            users[u.get("id")] = u
+        users = {u.get("id"): u for u in ha_result({"type": "config/auth/list"}) or []}
     except RuntimeError as e:
+        users = {}
         print(
             f"Warning: cannot list users ({e}); showing raw user ids",
             file=sys.stderr,
@@ -397,11 +411,11 @@ def resolve_users(entries):
 
     for cause in with_user:
         user_id = cause.pop("user_id")
-        known = users.get(user_id)
-        user = {"name": known.get("name") if known else None}
+        known = users.get(user_id) or {}
+        user = {"name": known.get("name")}
         if not known:
             user["user_id"] = user_id
-        if known and known.get("system_generated"):
+        if known.get("system_generated"):
             user["system_generated"] = True
         if user_id == token_user_id:
             user["token_user"] = True
@@ -410,14 +424,23 @@ def resolve_users(entries):
 
 def explain_missing(entity_id):
     """Why the logbook has nothing for an entity, as far as we can tell."""
-    if entity_id.startswith("sensor."):
+    domain = entity_id.partition(".")[0]
+    if domain in CONTINUOUS_DOMAINS:
+        return f"the logbook never records {domain} entities; use `ha-history changes`"
+    if domain == "sensor":
         try:
-            attrs = (ha_http("GET", f"/api/states/{entity_id}") or {}).get(
-                "attributes", {}
-            )
+            # Quoted: a space or non-ASCII id would fail inside urllib instead
+            path = "/api/states/" + urllib.parse.quote(entity_id, safe="")
+            state = ha_http("GET", path) or {}
         except RuntimeError:
-            attrs = None
-        if attrs and (attrs.get("unit_of_measurement") or attrs.get("state_class")):
+            state = {}
+        attrs = state.get("attributes") or {}
+        device_class = attrs.get("device_class")
+        if (
+            attrs.get("unit_of_measurement")
+            or attrs.get("state_class")
+            or (device_class and device_class not in NON_NUMERIC_DEVICE_CLASSES)
+        ):
             return (
                 "it is a numeric sensor, which the logbook skips; use "
                 "`ha-history changes` or `stats`"
@@ -435,6 +458,11 @@ def cmd_logbook(args):
         raise RuntimeError(
             "--context cannot be combined with entity ids or --device; "
             "query the context alone"
+        )
+    if args.context and not CONTEXT_ID_RE.fullmatch(args.context):
+        raise RuntimeError(
+            f"'{args.context}' is not a context id (a 26-character ULID, as "
+            "printed in `context_id`); run_id, item_id and user ids are not"
         )
     # A context id names its own moment; the window only bounds the search
     start, end = parse_window(args, default_last="10d" if args.context else "24h")
@@ -454,8 +482,12 @@ def cmd_logbook(args):
 
     if args.context and not rows:
         raise RuntimeError(
-            f"no logbook entries for context '{args.context}' in this window — "
-            "widen it, or the context is older than the recorder keeps"
+            f"no logbook entries for context '{args.context}'. Either the "
+            "recorder has not written them yet (it commits every few seconds; "
+            "retry shortly), the context changed no state, or what it set off "
+            "ran in child contexts (an automation run gets its own; find it "
+            "with ha-trace or an entity-scoped query). If it is older, widen "
+            "the window"
         )
     seen = {r.get("entity_id") for r in rows}
     missing = [eid for eid in args.entity_ids if eid not in seen]
@@ -465,11 +497,12 @@ def cmd_logbook(args):
             file=sys.stderr,
         )
     if args.entity_ids and not args.device and len(missing) == len(args.entity_ids):
-        print("Error: no logbook entries for any requested entity", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError("no logbook entries for any requested entity")
 
-    entries = [shape_row(r) for r in rows]
-    entries.sort(key=lambda e: e["when"], reverse=True)
+    # Sort on HA's epoch seconds: local ISO strings misorder across a DST change
+    entries = [
+        shape_row(r) for r in sorted(rows, key=lambda r: r["when"], reverse=True)
+    ]
     if args.kind:
         entries = [
             e
@@ -483,12 +516,7 @@ def cmd_logbook(args):
             if not any(fnmatch.fnmatch(e.get("entity_id", ""), p) for p in args.exclude)
         ]
 
-    output = {
-        "window": {
-            "from": start.astimezone().isoformat(),
-            "to": end.astimezone().isoformat(),
-        }
-    }
+    output = {"window": window_out(start, end)}
     if not (args.entity_ids or args.device or args.context):
         counts = Counter(e.get("entity_id") or "(none)" for e in entries)
         output["by_entity"] = [
@@ -594,7 +622,8 @@ def main():
         "--context",
         default=None,
         metavar="CONTEXT_ID",
-        help="Everything that happened in one context (default window: last 10d)",
+        help="Everything that happened in one context, by its context_id (a "
+        "ULID, not a run_id; default window: last 10d)",
     )
     p_logbook.add_argument(
         "--kind",
