@@ -42,10 +42,27 @@
 #                 first.
 #   ha-service --unsafe
 #                 the services ha-service refuses without the flag (Core
-#                 restart/stop, hassio.*, recorder purges, shell_command.*).
-#                 A permission rule cannot match a flag in the middle of a
-#                 command, which is why the old `Bash(*--unsafe*)` rule never
-#                 fired and was retired.
+#                 restart/stop, hassio.*, recorder purges, shell_command.*,
+#                 update.install). A permission rule cannot match a flag in the
+#                 middle of a command, which is why the old `Bash(*--unsafe*)`
+#                 rule never fired and was retired.
+#   ha (the Supervisor CLI)
+#                 settings.json allows `Bash(ha:*)`, and its literal ask rules
+#                 match one spelling each, while the CLI takes dozens (`apps` is
+#                 also `addons`/`addon`/`ad`, `uninstall` is also `rm`/`del`,
+#                 `core` is also `ha`) and root flags anywhere (`ha --raw-json
+#                 apps rm x`). So this is an allowlist: everything under `ha`
+#                 asks except the reads and routine commands in HA_CLI_PASS,
+#                 and a verb a later CLI adds asks until it is listed there.
+#                 The `ha` word is found as a command, after wrappers (`sudo`,
+#                 `timeout 5`, `bash -c`, `xargs`), with quotes and backslashes
+#                 removed; as an argument to a text tool (`rg ha`, `echo ha`)
+#                 it is data. A word the table does not know, `$verb` included,
+#                 asks. Not caught: `eval`, a copied or renamed binary, a text
+#                 tool that runs commands (`awk 'system(...)'`), and python3
+#                 posting to http://supervisor with SUPERVISOR_TOKEN.
+#                 The container is the trust boundary; this guards the
+#                 spellings a model actually types.
 #
 # A command that reaches a file without naming it (`grep -r password
 # /homeassistant`) is not caught; this closes the common paths, not every path.
@@ -67,6 +84,106 @@ readonly -a READ_COMMANDS=(
 )
 # Leading words that run the next word as the command
 readonly -a PREFIXES=(sudo command builtin time nice nohup env)
+
+# The `ha` CLI commands that run without asking, from its cobra tree
+# (github.com/home-assistant/cli, cmd/*.go): `kind path aliases...`. G is a
+# group: descend into a listed child, pass when nothing follows, ask on any
+# other word (a write verb, or one this table does not know yet). R is a read
+# or routine command: the words after it are its arguments. RG is both.
+readonly HA_CLI_PASS='
+R  info                     in inf
+R  banner                   ba
+R  available-updates        updates available_updates
+R  refresh-updates          refresh refresh_updates
+R  help
+R  completion
+G  apps                     app addons addon add-on add-ons ad
+R  apps/info                in
+R  apps/logs                log lg
+R  apps/stats               status stat
+R  apps/changelog           cl ch
+R  apps/start               run st
+G  audio                    snd sound
+R  audio/info               in inf
+R  audio/logs               log lg
+R  audio/stats              status stat st
+G  authentication           auth au
+R  authentication/list      ls
+G  backups                  backup back bk snapshots snapshot snap shot sn
+R  backups/info             in inf
+R  backups/new              create backup
+R  backups/reload           refresh re
+G  cli
+R  cli/info                 in inf
+R  cli/stats                status stat
+G  core                     homeassistant home-assistant ha
+R  core/check               validate chk ch
+R  core/info                in inf
+R  core/logs                log lg
+R  core/stats               status stat st
+R  core/start               run
+G  dns
+R  dns/info                 in inf
+R  dns/logs                 log lg
+R  dns/stats                status stat
+G  docker                   do
+R  docker/info              in inf
+G  hardware                 hw
+R  hardware/info            in inf
+R  hardware/audio           sounds snd au
+G  host                     ho
+R  host/info                in inf
+G  host/disks               disk
+R  host/disks/usage         us use
+RG host/logs                log lg
+R  host/logs/boots          list-boots lb
+R  host/logs/identifiers    ids list-identifiers li
+G  jobs                     job tasks task
+R  jobs/info                in inf
+G  mounts                   mount mnts mnt
+R  mounts/info              in inf
+G  multicast                mcast mc
+R  multicast/info           in inf
+R  multicast/logs           log lg
+R  multicast/stats          status stat
+G  network                  net
+R  network/info             in inf
+R  network/scan             accesspoints wifi
+G  observer
+R  observer/info            in inf
+R  observer/stats           status stat
+G  os                       hassos
+R  os/info                  in inf
+G  os/config                conf cfg
+G  os/config/swap           sw
+R  os/config/swap/info      in
+G  os/datadisk              data
+R  os/datadisk/list         in inf info show
+G  resolution               resolutions res
+R  resolution/info          in inf
+R  resolution/healthcheck   evaluate run
+G  resolution/issue         is trouble
+R  resolution/issue/suggestions su solutions
+G  security                 secure sec
+R  security/info            in inf
+G  store                    shop stor
+R  store/reload             refresh re
+G  supervisor               super su
+R  supervisor/info          in inf
+R  supervisor/logs          log lg
+R  supervisor/stats         status stat st
+R  supervisor/available-updates available_updates updates
+R  supervisor/reload        refresh re
+G  time                     ntp timedate
+R  time/info                in inf
+'
+# Root flags of the `ha` CLI that take a value; cobra accepts them anywhere
+readonly -a HA_VALUE_FLAGS=(--config --endpoint --log-level --api-token)
+# Commands whose `ha` arguments are text, not a command to run
+readonly -a TEXT_COMMANDS=(
+    echo printf grep egrep fgrep rg cat head tail jq yq sed awk git wc sort
+    uniq cut tr less more diff column test '[' '[['
+)
 
 ask() {
     jq -nc --arg reason "$1" '{
@@ -204,6 +321,57 @@ redirects_safe() {
     done
 }
 
+# Prints `ask` if one command segment runs the `ha` CLI with anything outside
+# HA_CLI_PASS. The segment has quotes and backslashes removed already.
+ha_cli_verdict() {
+    local -a words
+    local -A child=() kind=([root]=G)
+    local k path aliases a parent first i w node=root
+    read -ra words <<< "$1"
+    ((${#words[@]})) || return 0
+    # The segment's command, past assignments and wrappers like sudo
+    first=$(command_words "$1" | head -n 1)
+    [[ " ${TEXT_COMMANDS[*]} " == *" ${first##*/} "* ]] && return 0
+    for ((i = 0; i < ${#words[@]}; i++)); do
+        [[ ${words[i]##*/} == ha ]] && break
+    done
+    ((i < ${#words[@]})) || return 0
+    # Help anywhere before `--` prints help and runs nothing
+    for w in "${words[@]:i+1}"; do
+        [[ ${w} == -- ]] && break
+        [[ ${w} == --help || ${w} == -h ]] && return 0
+    done
+
+    while read -r k path aliases; do
+        [[ -z ${k} ]] && continue
+        parent=${path%/*}
+        [[ ${parent} == "${path}" ]] && parent=root
+        kind[${path}]=${k}
+        for a in "${path##*/}" ${aliases}; do
+            child["${parent} ${a}"]=${path}
+        done
+    done <<< "${HA_CLI_PASS}"
+
+    for ((i = i + 1; i < ${#words[@]}; i++)); do
+        w=${words[i]}
+        case ${w} in
+            -*)
+                [[ " ${HA_VALUE_FLAGS[*]} " == *" ${w} "* ]] && i=$((i + 1))
+                continue
+                ;;
+        esac
+        [[ ${kind[${node}]} == R ]] && return 0
+        if [[ -n ${child["${node} ${w}"]-} ]]; then
+            node=${child["${node} ${w}"]}
+        elif [[ ${kind[${node}]} == RG ]]; then
+            return 0
+        else
+            echo ask
+            return 0
+        fi
+    done
+}
+
 input=$(cat) || exit 0
 command -v jq > /dev/null 2>&1 || exit 0
 
@@ -212,6 +380,14 @@ cmd=$(printf '%s' "${input}" | jq -r 'select(.tool_name == "Bash") | .tool_input
 
 if [[ ${cmd} == *secrets.yaml* ]]; then
     ask "This shell command touches secrets.yaml, which holds your Home Assistant credentials."
+fi
+
+if [[ ${cmd} == *h*a* ]]; then
+    ha_segments=$(strip_comments "${cmd}" | tr -d "\"'\\\\" | sed -E 's/\$\(|[;&|()`]/\n/g')
+    while IFS= read -r segment; do
+        [[ -n $(ha_cli_verdict "${segment}") ]] \
+            && ask "This ha command can change Home Assistant itself (restart, stop, update, remove or reconfigure apps, Core, the OS, backups or the Supervisor). Only reads and a few routine commands run without asking."
+    done <<< "${ha_segments}"
 fi
 
 [[ ${cmd} == *.storage* || ${cmd} == *ha-entities* || ${cmd} == *ha-integrations* || ${cmd} == *ha-secrets* || ${cmd} == *ha-service* || ${cmd} == *ha-dashboard* ]] || exit 0
@@ -256,7 +432,7 @@ while IFS= read -r segment; do
                 ;;
         esac
         if [[ ${tool%.py} == ha-service && " ${words[*]} " == *" --unsafe "* ]]; then
-            ask "This service call can restart or stop Home Assistant, run a shell command or purge recorded history."
+            ask "This service call can restart or stop Home Assistant, run a shell command, purge recorded history or install an update."
         fi
     done
     [[ -z ${reason} || " ${words[*]} " == *" --dry-run "* ]] || ask "${reason}"

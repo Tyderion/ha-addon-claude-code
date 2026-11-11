@@ -63,11 +63,7 @@ is called here.
 
 ## Dangerous services
 
-`homeassistant.restart/stop`, `hassio.*`, `recorder.purge*` and
-`shell_command.*` are refused unless `--unsafe` is passed, and the add-on's
-permission hook asks the user before any call with `--unsafe`. Prefer the
-`ha` CLI equivalents (`ha core restart`) where they exist; they ask too,
-and the log is clearer.
+`homeassistant.restart/stop`, `hassio.*`, `recorder.purge*`, `shell_command.*` and `update.install` are refused unless `--unsafe` is passed, and the add-on's permission hook asks the user before any call with `--unsafe`. Prefer the `ha` CLI equivalents (`ha core restart`, `ha apps update <slug> --backup`) where they exist; they ask too, and the log is clearer. ManageSystem says which update goes through which path.
 
 ## Examples
 

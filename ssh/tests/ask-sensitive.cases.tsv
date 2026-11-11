@@ -115,6 +115,7 @@ ask	ha-service call homeassistant.restart --unsafe
 ask	ha-service --unsafe call shell_command.backup
 ask	cd /homeassistant && ha-service call recorder.purge --data keep_days=1 --unsafe
 ask	bash -c "ha-service call hassio.addon_restart --unsafe --data addon=core_mosquitto"
+ask	ha-service call update.install --entity update.home_assistant_core_update --unsafe
 pass	ha-service call light.turn_on --entity light.unsafe_lamp
 # ha-dashboard delete asks; every other ha-dashboard command passes
 ask	ha-dashboard delete my-dash
@@ -122,3 +123,107 @@ ask	ha-dashboard get my-dash > /tmp/my-dash.backup.json && ha-dashboard delete m
 pass	ha-dashboard set my-dash /tmp/my-dash.json
 pass	ha-dashboard list
 pass	ha-dashboard update my-dash --title "Delete me later"
+# The ha CLI: writes ask in every spelling, position and wrapper
+ask	ha apps uninstall core_mosquitto
+ask	ha addons uninstall core_mosquitto
+ask	ha addon remove core_mosquitto
+ask	ha ad rm core_mosquitto
+ask	ha apps restart core_mosquitto
+ask	ha app reboot core_mosquitto
+ask	ha apps stop 45df7312_zigbee2mqtt
+ask	ha apps update 45df7312_zigbee2mqtt --backup
+ask	ha apps rebuild 42429595_claude
+ask	ha apps install core_ssh
+ask	ha core restart
+ask	ha ha restart
+ask	ha homeassistant reboot
+ask	ha core upgrade --version 2026.11.1
+ask	ha core stop
+ask	ha backups restore abc123
+ask	ha backup rm abc123
+ask	ha snapshot delete abc123
+ask	ha host reboot
+ask	ha ho rb
+ask	ha os update
+ask	ha os datadisk wipe
+ask	ha os data erase
+ask	ha su up
+ask	ha supervisor options --channel dev
+ask	ha security options --force-security=false
+ask	ha factory-reset
+ask	ha docker reset-storage
+ask	ha store apps install core_ssh
+ask	ha store add https://example.com/repo
+ask	ha resolution suggestion apply 1234
+ask	ha res issue dismiss 1234
+ask	ha mounts delete nas
+ask	ha auth reset --username x
+ask	ha --raw-json apps uninstall core_mosquitto
+ask	ha apps --no-progress uninstall core_mosquitto
+ask	ha --log-level debug apps rm core_mosquitto
+ask	ha --log-level=debug apps rm core_mosquitto
+ask	ha --api-token "$SUPERVISOR_TOKEN" apps rm core_mosquitto
+ask	ha apps uninst\all core_mosquitto
+ask	ha ap\ps remove core_mosquitto
+ask	h\a apps remove core_mosquitto
+ask	"ha" apps remove core_mosquitto
+ask	/usr/bin/ha apps remove core_mosquitto
+ask	sudo ha apps remove core_mosquitto
+ask	timeout 60 ha core restart
+ask	bash -c "ha apps restart core_mosquitto"
+ask	echo core_mosquitto | xargs ha apps restart
+ask	for s in a b; do ha apps restart $s; done
+ask	cd /tmp && ha apps restart core_mosquitto
+ask	ha core info; ha core restart
+ask	echo $(ha core restart)
+ask	ha apps $verb core_mosquitto
+ask	ha $group restart
+ask	ha apps purge core_mosquitto
+ask	ha core info && ha apps rebuild x # ha core info
+# The ha CLI: reads and routine commands pass
+pass	ha
+pass	ha --help
+pass	ha apps
+pass	ha addons
+pass	ha apps info core_mosquitto
+pass	ha apps logs core_mosquitto -n 200
+pass	ha addon log core_mosquitto --lines 50
+pass	ha apps stats core_mosquitto
+pass	ha apps changelog core_mosquitto
+pass	ha apps start core_mosquitto
+pass	ha apps uninstall core_mosquitto --help
+ask	ha apps uninstall -- --help
+pass	ha core info --raw-json | jq -r .data.version
+pass	ha --raw-json core info
+pass	ha --log-level debug core info
+pass	ha --api-token x core info
+pass	ha core check
+pass	ha core logs -n 100
+pass	ha supervisor info
+pass	ha supervisor logs -n 50
+pass	ha host logs -n 200 -t addon_core_mosquitto
+pass	ha host logs boots
+pass	ha host info
+pass	ha os info
+pass	ha os datadisk list
+pass	ha resolution info
+pass	ha resolution healthcheck
+pass	ha available-updates
+pass	ha updates
+pass	ha refresh-updates
+pass	ha backups
+pass	ha backups new --name before-update
+pass	ha backup create --name x
+pass	ha store reload
+pass	ha info
+pass	ha help apps
+pass	timeout 30 ha core logs -n 50
+pass	ha core info 2>/dev/null | head
+# Not the ha CLI
+pass	rg -n ha /homeassistant/automations.yaml
+pass	echo ha apps uninstall x
+pass	git log --oneline --grep "ha apps remove"
+pass	sha256sum /homeassistant/configuration.yaml
+pass	ha-history logbook light.kitchen
+pass	ha-trace runs automation.hallway
+pass	cat /share/hash.txt

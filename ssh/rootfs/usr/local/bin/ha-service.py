@@ -19,8 +19,8 @@ automatically requests the response for services that return one.
 objects), otherwise taken as plain strings. --data-file takes a YAML or JSON
 mapping; --data flags override file keys.
 
-Dangerous services (restarts, host power, shell commands, recorder purges)
-additionally require --unsafe.
+Dangerous services (restarts, host power, shell commands, recorder purges,
+update installs) additionally require --unsafe.
 
 Virtual-state domains (input_*, counter, timer, var) are refused — their
 values are set with `ha-state`, which validates and verifies; only the
@@ -56,6 +56,7 @@ DANGEROUS_PATTERNS = (
     "hassio.*",
     "recorder.purge*",
     "shell_command.*",
+    "update.install",
 )
 
 # Value mutations on these domains belong to ha-state, which validates the
@@ -266,7 +267,7 @@ def cmd_call(args):
 
     if is_dangerous(call_id) and not args.unsafe:
         raise RuntimeError(
-            f"'{call_id}' is a dangerous service (restart/shell/purge class) — "
+            f"'{call_id}' is a dangerous service (restart/shell/purge/update class) — "
             "re-run with --unsafe if you really mean it"
         )
 

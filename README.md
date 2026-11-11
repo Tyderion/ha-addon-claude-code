@@ -33,11 +33,12 @@ This app runs as root with access to almost all tools and hardware of your syste
 | `ManageSecrets`     | `ha-secrets`                    | List secret names, create and test-fire webhook ids, without opening `secrets.yaml` |
 | `EditDashboard`     | `ha-dashboard`                  | Read and write Lovelace dashboards through the API                                  |
 | `ReloadConfig`      | `ha-reload`                     | Hot-reload YAML, and decide when a restart is really needed                         |
+| `ManageSystem`      | `ha-system`, `ha apps`          | Pending updates, repairs, and restarting, updating or reading the logs of apps      |
 
 **Guardrails**, as hooks and permission rules:
 
 - **Blocked outright, in every permission mode:** recursive deletes of a mapped directory, `mkfs`/`dd` onto a device, piping a download into a shell, the usual shell writes into `.storage` (`tee`, `sed -i`, `cp`/`mv` into it, redirects) and any edit there with Claude's file tools.
-- **Asks you first, in every mode except `bypassPermissions`:** any command or edit that names `secrets.yaml`, non-read access to `.storage`, `ha-entities rename` and `ha-integrations delete`/`disable` (a `--dry-run` runs without asking), `ha-secrets get`/`add`, `ha-service --unsafe`, `ha-dashboard delete`, and Core restarts, reboots and backup restores.
+- **Asks you first, in every mode except `bypassPermissions`:** any command or edit that names `secrets.yaml`, non-read access to `.storage`, `ha-entities rename` and `ha-integrations delete`/`disable` (a `--dry-run` runs without asking), `ha-secrets get`/`add`, `ha-service --unsafe` (which `update.install` needs), `ha-dashboard delete`, and every `ha` CLI command except reads and a few routine ones, in any of its spellings (`ha apps uninstall`, `ha addon remove`, `ha ha restart`, `ha backup rm`, ...).
 - **Checked after every edit:** a YAML file Claude edits under `/homeassistant` with its file tools is parsed at once, and syntax errors or duplicate keys come back to Claude before it reloads anything.
 
 **Pre-configured permissions** for the tools above, with `auto` permission mode by default, so routine work runs without a prompt for every command.

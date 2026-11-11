@@ -282,9 +282,11 @@ so it is the one place to change the behaviour.
   `cd x && y`) never match a prefix rule.
 - `acceptEdits` — like `default`, but file edits inside the working directory
   are approved automatically while commands still prompt.
-- `bypassPermissions` — nothing prompts. The `deny` and `ask` rules are
-  skipped entirely; only the destructive guard hook still holds, because
-  hooks run in every mode. Use this only if you understand that Claude then
+- `bypassPermissions` — only the `ask` rules in `settings.json` still
+  prompt; everything else is approved. The `deny` rules and the destructive
+  guard hook still hold. Claude Code does not document whether a hook's
+  "ask" prompts in this mode, so count on none of the hook-based prompts
+  below. Use this only if you understand that Claude then
   has the same reach into your Home Assistant instance that you do over SSH.
 
 ```yaml
@@ -417,10 +419,14 @@ Explicit rules still exist and still take precedence:
   `python3`, `bluetoothctl`, read-only shell utilities and `git`
   subcommands, and `curl` GETs to `http://supervisor/*`
 
-**Always asks first**, in every mode except `bypassPermissions`:
-`ha core restart/stop/update`, `ha host reboot/shutdown`, the shell's
-`reboot`, `shutdown`, `poweroff` and `halt`, `ha backup restore`,
-`ha addons uninstall/stop`, `ha os update`, `ha supervisor update`, `curl` POSTs to the Supervisor API (which can call
+**Always asks first**, in every mode except `bypassPermissions`: every `ha` CLI command except reads
+(`info`, `logs`, `stats`, `check`, bare listings such as `ha apps`) and a few
+routine ones (`ha apps start`, `ha backups new`, `ha refresh-updates`), in
+any of the CLI's spellings, so `ha addon remove`, `ha ha restart` and
+`ha --raw-json apps rm` ask as well as `ha apps uninstall`. A hook does this,
+because the `ha` CLI accepts dozens of aliases and a permission rule matches
+only one. Also the shell's `reboot`, `shutdown`, `poweroff` and `halt`,
+`curl` POSTs to the Supervisor API (which can call
 any service, restart Core, or restore a backup), and reading or writing
 `secrets.yaml`. For `secrets.yaml` a hook also covers shell commands that name
 the file, since the `ask` rules only apply to Claude's file tools and auto
@@ -582,6 +588,9 @@ again; skills you add yourself are never touched.
   and "who or what changed it" from the logbook (`ha-history`).
 - `DebugAutomation` — find out why an automation did or didn't run, from its
   traces (`ha-trace`).
+- `ManageSystem` — list pending updates across Core, OS, apps, HACS and
+  firmware and the repairs Home Assistant shows, with their text
+  (`ha-system`), and restart, update or read the logs of apps (`ha apps`).
 - `EditDashboard` — change dashboards, views and cards (`ha-dashboard`).
 - `ReloadConfig` — apply YAML changes, choosing between `ha-reload`
   and `ha core restart` and validating first.

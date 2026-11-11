@@ -27,7 +27,7 @@ Editing a `.yaml` file under `/homeassistant` triggers an automatic parse check 
 Hooks guard a few operations, whatever the permission mode:
 
 - **Blocked outright**, so retrying will not help: recursive deletes of a mapped directory, `mkfs`/`dd` onto a device, piping a download into a shell, and shell writes into `.storage`.
-- **Ask the user first**: any other shell command touching `.storage` beyond a plain read, any shell command naming `secrets.yaml`, `ha-secrets get` and `add`, `ha-entities rename`, `ha-integrations delete` and `disable` (a `--dry-run` of these three does not ask), any `ha-service` call with `--unsafe`, and `ha-dashboard delete`.
+- **Ask the user first**: any other shell command touching `.storage` beyond a plain read, any shell command naming `secrets.yaml`, `ha-secrets get` and `add`, `ha-entities rename`, `ha-integrations delete` and `disable` (a `--dry-run` of these three does not ask), any `ha-service` call with `--unsafe`, `ha-dashboard delete`, and every `ha` CLI command except reads (`info`, `logs`, `stats`, `check`, bare listings such as `ha apps`) and a few routine ones (`ha apps start`, `ha backups new`, `ha refresh-updates`).
 
 A blocked command means the job has a tool (`ha-dashboard`, `ha-secrets`, ...) or belongs in the Home Assistant UI; do not work around the guard.
 
@@ -56,14 +56,18 @@ Entities, areas, services, and integrations change without this file changing. *
 | Adding, configuring, renaming, reloading, disabling or removing an integration; which integrations are failing | `ManageIntegration` (`ha-integrations`); **never** read or edit `.storage/core.config_entries` |
 | Which secrets exist; creating, referencing or test-firing a webhook; adding an API key | `ManageSecrets` (`ha-secrets`); **never** cat, grep, Read or append to `secrets.yaml`, and never curl a webhook by hand |
 | Anything touching dashboards, views, cards, badges | `EditDashboard`; **never** edit `.storage/lovelace.*` by hand |
+| Restarting, stopping or updating an app (add-on), its logs, an app that won't start | `ManageSystem` (`ha apps`) |
+| What updates are waiting? Update X; what changed in it? | `ManageSystem` (`ha-system updates`) |
+| What are these repairs? Is the system healthy, supported, low on disk? | `ManageSystem` (`ha-system repairs`) |
 | Applying YAML changes | `ReloadConfig` (`ha-reload`); prefers hot reload over restart |
 
 ## Supervisor Commands
 
 - `ha core check` validates `configuration.yaml`; `yamllint <file>` for any other YAML
 - `ha core restart` only for new YAML-configured integrations or logger/recorder/http changes; everything else is `ha-reload`
-- `ha core logs`
-- `ha backup create` before anything large
+- Logs: `ha core logs -n 200`, `ha apps logs <slug> -n 200`, `ha supervisor logs -n 200`. Always pass `-n`; `-f` streams forever and the command never returns
+- Add-ons are apps in the `ha` CLI (`ha apps`; `ha addons` is an old alias), addressed by slug, not by name; `ManageSystem` covers them
+- `ha backups new --name <name>` before anything large
 - Custom components: `ls custom_components/` and read each `manifest.json` (repo, version, `iot_class`); never trust a list written down anywhere
 
 ## Gotchas
