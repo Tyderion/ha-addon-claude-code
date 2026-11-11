@@ -272,6 +272,15 @@ ask	ha backups > /tmp/x restore abc
 ask	ha backups >/tmp/x restore abc
 ask	ha core 2> restart rebuild
 ask	ha apps &> /tmp/x uninstall core_mosquitto
+# `list` after a group is a listing (cobra passes it to the group as an ignored argument)
+pass	ha backups list 2>&1 | head -60; ha-system repairs --all 2>&1 | head -4
+pass	ha apps list
+pass	ha addons ls
+pass	ha store list
+pass	ha os datadisk list
+ask	ha backups lst
+ask	ha apps logs list -n 5; ha apps restart list
+ask	ha --log-level list core restart
 # A flag's value is never the verb or a help flag
 ask	ha backups --password info restore abc
 ask	ha backups restore abc --password -h

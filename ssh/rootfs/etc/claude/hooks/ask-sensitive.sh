@@ -404,6 +404,15 @@ ha_cli_passes() {
             ha_value_flag "${w}" && i=$((i + 1))
             continue
         fi
+        # `list` is no verb, but models write `ha backups list`. Cobra stops at
+        # the first word that is not a subcommand and hands the rest to the
+        # group as arguments, which a group's own listing ignores (or it
+        # prints help), so it is a read. Other unknown words still ask: they
+        # may be verbs of a newer CLI.
+        if [[ -z ${HA_CHILD["${node} ${w}"]-} && ${HA_KIND[${node}]} == G ]] \
+            && [[ ${w} == list || ${w} == ls ]]; then
+            return 0
+        fi
         node=${HA_CHILD["${node} ${w}"]-}
         [[ -n ${node} ]] || return 1
     done
