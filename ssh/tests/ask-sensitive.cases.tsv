@@ -94,6 +94,18 @@ ask	ls /homeassistant/.storage 2>&1 && rm /homeassistant/.storage/y
 # reads the destructive guard lets through still ask here: sed and cp are not read-only
 ask	sed -n '1,40p' /homeassistant/.storage/core.config_entries
 ask	cp /homeassistant/.storage/lovelace.x /tmp/backup.json
+# -h/--help on an ha-* tool prints help and exits, unless it follows `--` or a shell -c
+pass	ha-secrets add --help; ha-secrets keys | grep -i backup; tail -30 /homeassistant/automations.yaml
+pass	ha-secrets get -h
+pass	ha-integrations delete hue --help
+pass	ha-areas delete area Storage -h
+pass	ha-service call homeassistant.restart --unsafe --help
+pass	python3 /usr/local/bin/ha-entities.py rename light.a light.b --help
+ask	ha-secrets add -- k --help
+ask	bash -c "ha-secrets add k v" -h
+ask	sh -c 'ha-integrations delete hue' --help
+ask	ha-secrets add k v; ha-secrets keys --help
+ask	ha-dashboard delete my-dash | grep -h x
 # ha-secrets: get and add ask in every form, the rest pass; no dry-run exemption
 pass	ha-secrets keys
 pass	ha-secrets keys --search nas --format json

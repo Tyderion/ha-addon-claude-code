@@ -474,6 +474,24 @@ bare=$(printf '%s' "${bare}" | sed -E 's/[0-9]*[<>]&[[:space:]]*[0-9-]+//g; s/&>
 # One command per line: split on ; & | newlines, $( ), backticks, ( )
 segments=$(printf '%s\n' "${bare}" | sed -E 's/\$\(|[;&|()`]/\n/g')
 
+# Whether words[$1], an ha-* tool, runs with -h/--help: argparse then prints
+# help and exits before doing anything. Only a help flag after the tool and
+# before `--` counts (after `--` it is a value), and none when a shell -c
+# comes first, since with the quotes gone `bash -c "ha-secrets add k v" -h`
+# looks the same and -h is bash's $0 there.
+tool_help() {
+    local j
+    [[ ${tool%.py} == ha-* ]] || return 1
+    for ((j = 0; j < $1; j++)); do
+        [[ ${words[j]} == -c ]] && return 1
+    done
+    for ((j = $1 + 1; j < ${#words[@]}; j++)); do
+        [[ ${words[j]} == -- ]] && return 1
+        [[ ${words[j]} == -h || ${words[j]} == --help ]] && return 0
+    done
+    return 1
+}
+
 # Destructive tool subcommands, found in the loose segments from above
 [[ -n ${loose} ]] || loose=$(loose_segments "${cmd}")
 while IFS= read -r segment; do
@@ -481,6 +499,7 @@ while IFS= read -r segment; do
     reason=''
     for ((i = 0; i < ${#words[@]}; i++)); do
         tool=${words[i]##*/}
+        tool_help "${i}" && continue
         case "${tool%.py} ${words[i + 1]-}" in
             'ha-entities rename')
                 reason="Changing an entity_id breaks every automation, script and dashboard that still uses the old one."
