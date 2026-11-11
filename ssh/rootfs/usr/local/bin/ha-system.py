@@ -20,12 +20,8 @@ All commands accept --format yaml|json (default: yaml).
 """
 
 import argparse
-import json
 import os
-import string
 import sys
-import urllib.error
-import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from ha_lib import (
@@ -44,27 +40,18 @@ HASSIO_SYSTEM = {
     "home_assistant_os": "os",
     "home_assistant_supervisor": "supervisor",
 }
-APP_ICON_PREFIX = "/api/hassio/addons/"
-SEVERITY_ORDER = ("critical", "error", "warning")
-SUPERVISOR_URL = "http://supervisor"
+SEVERITY_RANK = {"critical": 0, "error": 1, "warning": 2}
 
 
 def supervisor_get(path):
-    """GET a Supervisor API path and return its `data`."""
-    token = os.environ.get("SUPERVISOR_TOKEN")
-    if not token:
-        raise RuntimeError("SUPERVISOR_TOKEN is not set")
-    request = urllib.request.Request(
-        SUPERVISOR_URL + path, headers={"Authorization": f"Bearer {token}"}
+    """GET a Supervisor API path through Core's proxy (admin token only)."""
+    return (
+        ha_result({"type": "supervisor/api", "endpoint": path, "method": "get"}) or {}
     )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            reply = json.loads(response.read() or b"{}")
-    except (urllib.error.URLError, OSError, ValueError) as e:
-        raise RuntimeError(f"GET {path}: {e}") from None
-    if reply.get("result") != "ok":
-        raise RuntimeError(f"GET {path}: {reply.get('message') or reply}")
-    return reply.get("data") or {}
+
+
+def without_none(d):
+    return {k: v for k, v in d.items() if v is not None}
 
 
 # --- updates ---
@@ -74,16 +61,10 @@ def update_kind(state, entry):
     """What an update entity updates, and the app slug when it is an app."""
     attrs = state.get("attributes") or {}
     if entry.get("platform") == "hassio":
-        unique_id = entry.get("unique_id") or ""
-        prefix = unique_id.removesuffix(HASSIO_SUFFIX)
+        prefix = (entry.get("unique_id") or "").removesuffix(HASSIO_SUFFIX)
         if prefix in HASSIO_SYSTEM:
             return HASSIO_SYSTEM[prefix], None
-        if prefix != unique_id:
-            return "app", prefix
-        picture = attrs.get("entity_picture") or ""
-        if picture.startswith(APP_ICON_PREFIX):
-            return "app", picture[len(APP_ICON_PREFIX) :].split("/")[0]
-        return "app", None
+        return "app", prefix
     if entry.get("platform") == "hacs":
         return "hacs", None
     if attrs.get("device_class") == "firmware":
@@ -108,7 +89,7 @@ def shape_update(state, entry):
         row["update_percentage"] = attrs.get("update_percentage")
     if attrs.get("auto_update"):
         row["auto_update"] = True
-    return {k: v for k, v in row.items() if v is not None}
+    return without_none(row)
 
 
 def is_skipped(state):
@@ -128,19 +109,20 @@ def cmd_updates(args):
         for e in ha_result({"type": "config/entity_registry/list"}) or []
     }
 
-    rows, unknown, unavailable, skipped = [], [], 0, 0
+    rows, unknown, unavailable, skipped, pending = [], [], 0, 0, 0
     for state in states:
         value = state.get("state")
+        skip = value == "off" and is_skipped(state)
+        pending += value == "on"
+        skipped += skip
         if value == "unavailable":
             unavailable += 1
         elif value == "unknown":
             unknown.append(update_kind(state, registry.get(state["entity_id"], {}))[0])
-        elif value == "off" and is_skipped(state):
-            skipped += 1
         if value == "on" or (args.all and value == "off"):
             row = shape_update(state, registry.get(state["entity_id"], {}))
             if args.all:
-                row["state"] = "skipped" if is_skipped(state) else value
+                row["state"] = "skipped" if skip else value
             rows.append(row)
 
     rows.sort(key=lambda r: (KIND_ORDER.index(r["kind"]), (r.get("name") or "")))
@@ -156,8 +138,7 @@ def cmd_updates(args):
     if skipped and not args.all:
         notes.append(f"{skipped} updates were skipped in the UI (--all shows them)")
 
-    output = {"pending": sum(1 for s in states if s.get("state") == "on")}
-    output["updates"] = rows
+    output = {"pending": pending, "updates": rows}
     if notes:
         output["notes"] = notes
     print_output(output, args.format)
@@ -177,7 +158,7 @@ def render(text, placeholders):
     if not text:
         return None
     try:
-        return string.Formatter().vformat(text, (), _KeepMissing(placeholders or {}))
+        return text.format_map(_KeepMissing(placeholders or {}))
     except (ValueError, IndexError):
         return text
 
@@ -261,8 +242,8 @@ def cmd_repairs(args):
             file=sys.stderr,
         )
 
-    hidden = 0 if args.all else sum(1 for i in core if i.get("ignored"))
     shown = [i for i in core if args.all or not i.get("ignored")]
+    hidden = len(core) - len(shown)
     domains = {i.get("domain") for i in shown if i.get("domain")}
     if sup_issues:
         domains.add("hassio")
@@ -300,22 +281,20 @@ def cmd_repairs(args):
             row["ignored"] = True
         if row["issue_domain"] == row["domain"]:
             del row["issue_domain"]
-        repairs.append({k: v for k, v in row.items() if v is not None})
-    repairs.sort(
-        key=lambda r: (
-            SEVERITY_ORDER.index(r["severity"])
-            if r.get("severity") in SEVERITY_ORDER
-            else len(SEVERITY_ORDER)
-        )
-    )
+        repairs.append(without_none(row))
+    repairs.sort(key=lambda r: SEVERITY_RANK.get(r.get("severity"), 3))
 
     for issue in sup_issues:
         title, description = issue_text(
             resources, "hassio", issue["key"], {"reference": issue["reference"]}
         )
-        row = {"source": "supervisor", **issue, "title": title or issue["key"]}
-        row["description"] = description
-        repairs.append({k: v for k, v in row.items() if v is not None})
+        row = {
+            "source": "supervisor",
+            **issue,
+            "title": title or issue["key"],
+            "description": description,
+        }
+        repairs.append(without_none(row))
 
     output = {"repairs": repairs}
     if hidden:

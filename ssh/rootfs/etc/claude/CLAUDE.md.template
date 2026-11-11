@@ -20,7 +20,7 @@ This is a Home Assistant configuration directory.
 
 ## CLI Tools
 
-The `ha-*` tools are on `PATH`. Call them by bare name; a path form such as `./ha-entities` is rewritten to the bare name before it runs, so it is never what you meant. If a call errors, fix the call instead of falling back to ad-hoc WebSocket scripts via `ha_lib` or `curl`. All of them read a long-lived token from `HA_TOKEN` or `/homeassistant/.claude/ha_token` and print setup steps when it is missing; `ha-integrations` and `ha-entities update`/`rename` need an administrator's token.
+The `ha-*` tools are on `PATH`. Call them by bare name; a path form such as `./ha-entities` is rewritten to the bare name before it runs, so it is never what you meant. If a call errors, fix the call instead of falling back to ad-hoc WebSocket scripts via `ha_lib` or `curl`. All of them read a long-lived token from `HA_TOKEN` or `/homeassistant/.claude/ha_token` and print setup steps when it is missing; `ha-integrations`, `ha-entities update`/`rename` and the Supervisor half of `ha-system repairs` need an administrator's token.
 
 Editing a `.yaml` file under `/homeassistant` triggers an automatic parse check (syntax plus duplicate top-level keys). If it fails, the error comes back to you as a tool error; fix it before reloading.
 

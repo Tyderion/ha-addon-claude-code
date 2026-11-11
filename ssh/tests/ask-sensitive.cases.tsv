@@ -227,3 +227,25 @@ pass	sha256sum /homeassistant/configuration.yaml
 pass	ha-history logbook light.kitchen
 pass	ha-trace runs automation.hallway
 pass	cat /share/hash.txt
+# A verb from stdin or a command substitution still counts
+ask	echo restart | xargs ha core
+ask	ha core $(echo restart)
+ask	ha core `echo restart`
+pass	ha core info $(date +%s)
+pass	echo core_mosquitto | xargs ha apps logs -n 50
+# A #-comment inside $'...' does not hide the rest of the line
+ask	echo $'don\'t # note'; ha core restart
+# xargs anywhere before ha feeds it words; a text tool after xargs is data
+ask	echo restart | timeout 30 xargs ha core
+ask	echo restart | sudo -u root xargs ha core
+pass	ls /share | xargs grep -l ha
+# A flag's value is never the verb or a help flag
+ask	ha backups --password info restore abc
+ask	ha backups restore abc --password -h
+ask	ha apps -- uninstall core_mosquitto
+# A variable command word could be ha
+ask	HA=ha; $HA core restart
+pass	v=$(ha core info --raw-json)
+# ha as an argument to a bundled tool is data
+pass	ha-entities search ha kitchen
+pass	python3 /usr/local/bin/ha-entities.py search ha kitchen

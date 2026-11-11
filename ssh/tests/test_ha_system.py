@@ -36,14 +36,6 @@ STATES = [
         title="Zigbee2MQTT",
         installed_version="2.14.1-1",
         latest_version="2.14.3-1",
-        entity_picture="/api/hassio/addons/45df7312_zigbee2mqtt/icon",
-    ),
-    update(
-        "update.iconless_app_update",
-        "on",
-        title="Iconless",
-        installed_version="1.0",
-        latest_version="1.1",
     ),
     update(
         "update.tuya_local_update",
@@ -104,11 +96,6 @@ REGISTRY = [
         "platform": "hassio",
         "unique_id": "45df7312_zigbee2mqtt_version_latest",
     },
-    {
-        "entity_id": "update.iconless_app_update",
-        "platform": "hassio",
-        "unique_id": "local_iconless_version_latest",
-    },
     {"entity_id": "update.tuya_local_update", "platform": "hacs"},
     {"entity_id": "update.mushroom_update", "platform": "hacs"},
     {"entity_id": "update.shelly4_office_firmware", "platform": "shelly"},
@@ -141,12 +128,11 @@ class Updates(unittest.TestCase):
             {
                 "update.home_assistant_core_update",
                 "update.zigbee2mqtt_update",
-                "update.iconless_app_update",
                 "update.tuya_local_update",
                 "update.shelly4_office_firmware",
             },
         )
-        self.assertEqual(out["pending"], 5)
+        self.assertEqual(out["pending"], 4)
 
     def test_kind_and_slug_come_from_the_registry(self):
         rows = self.by_id(self.run_updates())
@@ -155,20 +141,12 @@ class Updates(unittest.TestCase):
         self.assertEqual(
             rows["update.zigbee2mqtt_update"]["slug"], "45df7312_zigbee2mqtt"
         )
-        self.assertEqual(rows["update.iconless_app_update"]["slug"], "local_iconless")
         self.assertEqual(rows["update.tuya_local_update"]["kind"], "hacs")
         self.assertEqual(rows["update.shelly4_office_firmware"]["kind"], "firmware")
 
-    def test_app_slug_falls_back_to_the_icon(self):
-        entry = {"platform": "hassio", "unique_id": "something_else"}
-        state = STATES[2]
-        self.assertEqual(
-            self.tool.update_kind(state, entry), ("app", "45df7312_zigbee2mqtt")
-        )
-
     def test_sorted_by_kind(self):
         kinds = [r["kind"] for r in self.run_updates()["updates"]]
-        self.assertEqual(kinds, ["core", "app", "app", "hacs", "firmware"])
+        self.assertEqual(kinds, ["core", "app", "hacs", "firmware"])
 
     def test_in_progress_is_shown(self):
         row = self.by_id(self.run_updates())["update.tuya_local_update"]
@@ -270,20 +248,21 @@ class Repairs(unittest.TestCase):
                 return {"language": "de"}
             if command["type"] == "frontend/get_translations":
                 return {"resources": RESOURCES}
+            if command["type"] == "supervisor/api":
+                return supervisor(command)
             raise AssertionError(f"unexpected command {command}")
 
-        self.tool = load_tool("ha-system", ha_result=ha_result)
-
-        def supervisor_get(path):
+        def supervisor(command):
+            self.assertEqual(command["method"], "get")
             if self.sup_info is None:
-                raise RuntimeError("SUPERVISOR_TOKEN is not set")
-            if path == "/resolution/info":
+                raise RuntimeError("Unauthorized")
+            if command["endpoint"] == "/resolution/info":
                 return self.sup_info
-            if path == f"/resolution/issue/{SUP_UUID}/suggestions":
+            if command["endpoint"] == f"/resolution/issue/{SUP_UUID}/suggestions":
                 return {"suggestions": [{"type": "execute_stop", "uuid": "s1"}]}
-            raise AssertionError(f"unexpected path {path}")
+            raise AssertionError(f"unexpected endpoint {command}")
 
-        self.tool.supervisor_get = supervisor_get
+        self.tool = load_tool("ha-system", ha_result=ha_result)
 
     def run_repairs(self, *argv):
         code, out, err = run_tool(self.tool, "ha-system", "repairs", *argv)

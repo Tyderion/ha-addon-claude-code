@@ -56,13 +56,19 @@
 #                 and a verb a later CLI adds asks until it is listed there.
 #                 The `ha` word is found as a command, after wrappers (`sudo`,
 #                 `timeout 5`, `bash -c`, `xargs`), with quotes and backslashes
-#                 removed; as an argument to a text tool (`rg ha`, `echo ha`)
-#                 it is data. A word the table does not know, `$verb` included,
-#                 asks. Not caught: `eval`, a copied or renamed binary, a text
+#                 removed; as an argument to a text tool or an ha-* tool
+#                 (`rg ha`, `ha-entities search ha`) it is data. Flags take the
+#                 next word as their value the way cobra does. A word the table
+#                 does not know, `$verb` included, asks; so does a `$HA`
+#                 command word, unbalanced quotes, and a group under `xargs`
+#                 that would take its verb from stdin. Not caught: `eval`, a copied or renamed binary, a text
 #                 tool that runs commands (`awk 'system(...)'`), and python3
 #                 posting to http://supervisor with SUPERVISOR_TOKEN.
 #                 The container is the trust boundary; this guards the
-#                 spellings a model actually types.
+#                 spellings a model actually types. settings.json keeps
+#                 literal ask rules for the common spellings (`ha apps
+#                 uninstall`, `ha core restart`, ...) for when this hook
+#                 cannot run (no jq).
 #
 # A command that reaches a file without naming it (`grep -r password
 # /homeassistant`) is not caught; this closes the common paths, not every path.
@@ -89,7 +95,7 @@ readonly -a PREFIXES=(sudo command builtin time nice nohup env)
 # (github.com/home-assistant/cli, cmd/*.go): `kind path aliases...`. G is a
 # group: descend into a listed child, pass when nothing follows, ask on any
 # other word (a write verb, or one this table does not know yet). R is a read
-# or routine command: the words after it are its arguments. RG is both.
+# or routine command: the words after it are its arguments.
 readonly HA_CLI_PASS='
 R  info                     in inf
 R  banner                   ba
@@ -135,9 +141,7 @@ G  host                     ho
 R  host/info                in inf
 G  host/disks               disk
 R  host/disks/usage         us use
-RG host/logs                log lg
-R  host/logs/boots          list-boots lb
-R  host/logs/identifiers    ids list-identifiers li
+R  host/logs                log lg
 G  jobs                     job tasks task
 R  jobs/info                in inf
 G  mounts                   mount mnts mnt
@@ -177,8 +181,19 @@ R  supervisor/reload        refresh re
 G  time                     ntp timedate
 R  time/info                in inf
 '
-# Root flags of the `ha` CLI that take a value; cobra accepts them anywhere
-readonly -a HA_VALUE_FLAGS=(--config --endpoint --log-level --api-token)
+declare -A HA_CHILD=() HA_KIND=([root]=G)
+while read -r k path aliases; do
+    [[ -z ${k} ]] && continue
+    parent=${path%/*}
+    [[ ${parent} == "${path}" ]] && parent=root
+    HA_KIND[${path}]=${k}
+    for a in "${path##*/}" ${aliases}; do
+        HA_CHILD["${parent} ${a}"]=${path}
+    done
+done <<< "${HA_CLI_PASS}"
+# Flags of the `ha` CLI that take no value. Like cobra, any other flag written
+# without `=` takes the next word as its value, wherever it stands.
+readonly -a HA_BOOL_FLAGS=(--raw-json --no-progress --help -h --)
 # Commands whose `ha` arguments are text, not a command to run
 readonly -a TEXT_COMMANDS=(
     echo printf grep egrep fgrep rg cat head tail jq yq sed awk git wc sort
@@ -287,15 +302,29 @@ strip_comments() {
             none)
                 case ${c} in
                     '#') [[ ${word_start} == *"${prev}"* ]] && state=comment && continue ;;
+                    '$') [[ ${s:i+1:1} == "'" ]] && state=ansi c+="'" i=$((i + 1)) ;;
                     "'") state=single ;;
                     '"') state=double ;;
-                    \\) c+=${s:i+1:1} i=$((i + 1)) ;;
+                    \\)
+                        # A line continuation joins the lines, as in bash
+                        [[ ${s:i+1:1} == $'\n' ]] && i=$((i + 1)) && continue
+                        c+=${s:i+1:1} i=$((i + 1))
+                        ;;
                 esac
                 ;;
             single) [[ ${c} == "'" ]] && state=none ;;
-            double)
+            ansi) # $'...': a backslash escapes the next character, \' included
                 case ${c} in
                     \\) c+=${s:i+1:1} i=$((i + 1)) ;;
+                    "'") state=none ;;
+                esac
+                ;;
+            double)
+                case ${c} in
+                    \\)
+                        [[ ${s:i+1:1} == $'\n' ]] && i=$((i + 1)) && continue
+                        c+=${s:i+1:1} i=$((i + 1))
+                        ;;
                     '"') state=none ;;
                 esac
                 ;;
@@ -321,55 +350,55 @@ redirects_safe() {
     done
 }
 
-# Prints `ask` if one command segment runs the `ha` CLI with anything outside
+# True if `$1` is a flag that takes the next word as its value
+ha_value_flag() {
+    [[ $1 == -* && $1 != *=* && " ${HA_BOOL_FLAGS[*]} " != *" $1 "* ]]
+}
+
+# True unless one command segment runs the `ha` CLI with anything outside
 # HA_CLI_PASS. The segment has quotes and backslashes removed already.
-ha_cli_verdict() {
+ha_cli_passes() {
     local -a words
-    local -A child=() kind=([root]=G)
-    local k path aliases a parent first i w node=root
+    local i w prev='' node=root fed=0
     read -ra words <<< "$1"
-    ((${#words[@]})) || return 0
-    # The segment's command, past assignments and wrappers like sudo
-    first=$(command_words "$1" | head -n 1)
-    [[ " ${TEXT_COMMANDS[*]} " == *" ${first##*/} "* ]] && return 0
+    # A command word from a variable could be ha (`$HA core restart`); the
+    # caller only gets here when the command has an `ha` word somewhere
+    for w in "${words[@]}"; do
+        [[ ${w} == *=* || " ${PREFIXES[*]} " == *" ${w} "* ]] || break
+    done
+    [[ ${w-} == \$* && ${w} != '$SUBST' ]] && return 1
     for ((i = 0; i < ${#words[@]}; i++)); do
-        [[ ${words[i]##*/} == ha ]] && break
+        w=${words[i]##*/}
+        [[ ${w} == ha ]] && break
+        w=${w%.py}
+        # ha is an argument to a text tool or a bundled ha-* tool
+        [[ " ${TEXT_COMMANDS[*]} " == *" ${w} "* || ${w} == ha-* ]] && return 0
+        # These append words from stdin, so a group may get its verb there
+        # (`echo restart | xargs ha core`)
+        [[ ${w} == xargs || ${w} == parallel ]] && fed=1
     done
     ((i < ${#words[@]})) || return 0
-    # Help anywhere before `--` prints help and runs nothing
+    # Help before `--` prints help and runs nothing, unless it is a flag's value
     for w in "${words[@]:i+1}"; do
         [[ ${w} == -- ]] && break
-        [[ ${w} == --help || ${w} == -h ]] && return 0
+        [[ (${w} == --help || ${w} == -h) && -z ${prev} ]] && return 0
+        prev=''
+        ha_value_flag "${w}" && prev=${w}
     done
-
-    while read -r k path aliases; do
-        [[ -z ${k} ]] && continue
-        parent=${path%/*}
-        [[ ${parent} == "${path}" ]] && parent=root
-        kind[${path}]=${k}
-        for a in "${path##*/}" ${aliases}; do
-            child["${parent} ${a}"]=${path}
-        done
-    done <<< "${HA_CLI_PASS}"
 
     for ((i = i + 1; i < ${#words[@]}; i++)); do
         w=${words[i]}
-        case ${w} in
-            -*)
-                [[ " ${HA_VALUE_FLAGS[*]} " == *" ${w} "* ]] && i=$((i + 1))
-                continue
-                ;;
-        esac
-        [[ ${kind[${node}]} == R ]] && return 0
-        if [[ -n ${child["${node} ${w}"]-} ]]; then
-            node=${child["${node} ${w}"]}
-        elif [[ ${kind[${node}]} == RG ]]; then
-            return 0
-        else
-            echo ask
-            return 0
+        [[ ${HA_KIND[${node}]} == R ]] && return 0
+        # After `--` every word is an argument, never a command
+        [[ ${w} == -- ]] && return 1
+        if [[ ${w} == -* ]]; then
+            ha_value_flag "${w}" && i=$((i + 1))
+            continue
         fi
+        node=${HA_CHILD["${node} ${w}"]-}
+        [[ -n ${node} ]] || return 1
     done
+    [[ ${HA_KIND[${node}]} == R ]] || ((fed == 0))
 }
 
 input=$(cat) || exit 0
@@ -377,17 +406,36 @@ command -v jq > /dev/null 2>&1 || exit 0
 
 cmd=$(printf '%s' "${input}" | jq -r 'select(.tool_name == "Bash") | .tool_input.command // empty' 2> /dev/null)
 [[ -z ${cmd} ]] && exit 0
+# For substring tests only: line continuations joined, which can merge
+# commands bash keeps apart (after a comment or `\\`), so never parse this
+joined=${cmd//$'\\\n'/}
 
-if [[ ${cmd} == *secrets.yaml* ]]; then
+if [[ ${joined} == *secrets.yaml* ]]; then
     ask "This shell command touches secrets.yaml, which holds your Home Assistant credentials."
 fi
 
-if [[ ${cmd} == *h*a* ]]; then
-    ha_segments=$(strip_comments "${cmd}" | tr -d "\"'\\\\" | sed -E 's/\$\(|[;&|()`]/\n/g')
+# One command per line, for the tool checks below. Comments go first, so a
+# `# --dry-run` note cannot pass for the flag. Quotes and backslashes are then
+# dropped outright rather than stripped with their contents, so
+# `bash -c "ha-integrations delete x"`, `ap\ps` and xargs/loop forms still
+# show the tool and its subcommand as words. A command substitution leaves the
+# word $SUBST behind, so `ha core $(echo restart)` does not end at `ha core`.
+loose_segments() {
+    strip_comments "$1" | tr -d "\"'\\\\" | sed -E 's/\$\(|`/ $SUBST\n/g; s/[;&|()]/\n/g'
+}
+loose=''
+
+# strip_comments is slow on big heredocs, so only a command with an `ha` word
+# in it is split for this check
+ha_word='(^|[^[:alnum:]_.-])ha($|[^[:alnum:]_.-])'
+if [[ $(printf '%s' "${joined}" | tr -d "\"'\\\\") =~ ${ha_word} ]]; then
+    strip_single_quotes "${cmd}" > /dev/null \
+        || ask "This shell command runs or mentions the ha CLI, and its quotes could not be parsed."
+    loose=$(loose_segments "${cmd}")
     while IFS= read -r segment; do
-        [[ -n $(ha_cli_verdict "${segment}") ]] \
-            && ask "This ha command can change Home Assistant itself (restart, stop, update, remove or reconfigure apps, Core, the OS, backups or the Supervisor). Only reads and a few routine commands run without asking."
-    done <<< "${ha_segments}"
+        ha_cli_passes "${segment}" \
+            || ask "This ha command can change Home Assistant itself (restart, stop, update, remove or reconfigure apps, Core, the OS, backups or the Supervisor). Only reads and a few routine commands run without asking."
+    done <<< "${loose}"
 fi
 
 [[ ${cmd} == *.storage* || ${cmd} == *ha-entities* || ${cmd} == *ha-integrations* || ${cmd} == *ha-secrets* || ${cmd} == *ha-service* || ${cmd} == *ha-dashboard* ]] || exit 0
@@ -401,11 +449,8 @@ bare=$(printf '%s' "${bare}" | sed -E 's/[0-9]*[<>]&[[:space:]]*[0-9-]+//g; s/&>
 # One command per line: split on ; & | newlines, $( ), backticks, ( )
 segments=$(printf '%s\n' "${bare}" | sed -E 's/\$\(|[;&|()`]/\n/g')
 
-# Destructive tool subcommands. Comments go first, so a `# --dry-run` note
-# cannot pass for the flag. Quotes are then dropped outright rather than
-# stripped with their contents, so `bash -c "ha-integrations delete x"` and
-# xargs/loop forms still show the tool and its subcommand as words.
-loose=$(strip_comments "${cmd}" | tr -d "\"'" | sed -E 's/\$\(|[;&|()`]/\n/g')
+# Destructive tool subcommands, found in the loose segments from above
+[[ -n ${loose} ]] || loose=$(loose_segments "${cmd}")
 while IFS= read -r segment; do
     read -ra words <<< "${segment}"
     reason=''
