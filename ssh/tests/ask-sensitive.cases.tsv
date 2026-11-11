@@ -249,3 +249,15 @@ pass	v=$(ha core info --raw-json)
 # ha as an argument to a bundled tool is data
 pass	ha-entities search ha kitchen
 pass	python3 /usr/local/bin/ha-entities.py search ha kitchen
+# Quotes and backslashes inside a name bash still runs do not hide it
+ask	ha-integr\ations delete hue
+ask	ha-integ''rations delete hue
+ask	ha-sec"rets" get router_password
+ask	ha-serv\ice call homeassistant.restart --unsafe
+ask	ha-dash\board delete lovelace-x
+ask	ha-ent\ities rename light.a light.b
+ask	cat /homeassistant/secrets.y\aml
+ask	cat /homeassistant/sec''rets.yaml
+ask	rm /homeassistant/.st\orage/lovelace.dashboard_x
+pass	cat /homeassistant/.st\orage/core.entity_registry
+pass	ha-integr\ations delete hue --dry-run

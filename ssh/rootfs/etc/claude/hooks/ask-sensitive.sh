@@ -406,11 +406,13 @@ command -v jq > /dev/null 2>&1 || exit 0
 
 cmd=$(printf '%s' "${input}" | jq -r 'select(.tool_name == "Bash") | .tool_input.command // empty' 2> /dev/null)
 [[ -z ${cmd} ]] && exit 0
-# For substring tests only: line continuations joined, which can merge
-# commands bash keeps apart (after a comment or `\\`), so never parse this
-joined=${cmd//$'\\\n'/}
+# For substring tests only: line continuations joined and quotes and
+# backslashes dropped, so `ha-integr\ations` and `secrets.y''aml` still show
+# the name bash runs. Joining can merge commands bash keeps apart (after a
+# comment or `\\`), so never parse this
+plain=$(printf '%s' "${cmd//$'\\\n'/}" | tr -d "\"'\\\\")
 
-if [[ ${joined} == *secrets.yaml* ]]; then
+if [[ ${plain} == *secrets.yaml* ]]; then
     ask "This shell command touches secrets.yaml, which holds your Home Assistant credentials."
 fi
 
@@ -428,7 +430,7 @@ loose=''
 # strip_comments is slow on big heredocs, so only a command with an `ha` word
 # in it is split for this check
 ha_word='(^|[^[:alnum:]_.-])ha($|[^[:alnum:]_.-])'
-if [[ $(printf '%s' "${joined}" | tr -d "\"'\\\\") =~ ${ha_word} ]]; then
+if [[ ${plain} =~ ${ha_word} ]]; then
     strip_single_quotes "${cmd}" > /dev/null \
         || ask "This shell command runs or mentions the ha CLI, and its quotes could not be parsed."
     loose=$(loose_segments "${cmd}")
@@ -438,7 +440,7 @@ if [[ $(printf '%s' "${joined}" | tr -d "\"'\\\\") =~ ${ha_word} ]]; then
     done <<< "${loose}"
 fi
 
-[[ ${cmd} == *.storage* || ${cmd} == *ha-entities* || ${cmd} == *ha-integrations* || ${cmd} == *ha-secrets* || ${cmd} == *ha-service* || ${cmd} == *ha-dashboard* ]] || exit 0
+[[ ${plain} == *.storage* || ${plain} == *ha-entities* || ${plain} == *ha-integrations* || ${plain} == *ha-secrets* || ${plain} == *ha-service* || ${plain} == *ha-dashboard* ]] || exit 0
 shopt -s extglob
 bare=$(strip_single_quotes "${cmd}") \
     || ask "This shell command could not be parsed, and it touches .storage, the entity registry, integrations, secrets or services."
@@ -483,7 +485,7 @@ while IFS= read -r segment; do
     [[ -z ${reason} || " ${words[*]} " == *" --dry-run "* ]] || ask "${reason}"
 done <<< "${loose}"
 
-if [[ ${cmd} == *.storage* ]]; then
+if [[ ${plain} == *.storage* ]]; then
     redirects_safe "${bare}" \
         || ask "This shell command may write into Home Assistant's .storage directory (its internal state)."
     while IFS= read -r segment; do
