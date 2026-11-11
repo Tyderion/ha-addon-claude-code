@@ -259,6 +259,19 @@ ask	echo $'don\'t # note'; ha core restart
 ask	echo restart | timeout 30 xargs ha core
 ask	echo restart | sudo -u root xargs ha core
 pass	ls /share | xargs grep -l ha
+# A redirect is not a verb, and its & does not split the command
+pass	ha-system repairs --all; echo ---; ha backups 2>&1 | head -40
+pass	ha backups > /tmp/backups.txt
+pass	ha backups 2>/dev/null
+pass	ha apps &> /tmp/apps.txt
+pass	ha apps < /dev/null
+pass	ha backups >> /tmp/b.txt 2>&1
+ask	ha backups 2>&1 restore abc
+ask	ha core >&2 restart
+ask	ha backups > /tmp/x restore abc
+ask	ha backups >/tmp/x restore abc
+ask	ha core 2> restart rebuild
+ask	ha apps &> /tmp/x uninstall core_mosquitto
 # A flag's value is never the verb or a help flag
 ask	ha backups --password info restore abc
 ask	ha backups restore abc --password -h

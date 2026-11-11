@@ -394,6 +394,12 @@ ha_cli_passes() {
         [[ ${HA_KIND[${node}]} == R ]] && return 0
         # After `--` every word is an argument, never a command
         [[ ${w} == -- ]] && return 1
+        # A redirect is not an argument: `2>/dev/null` goes, and a bare
+        # `>` or `2>` takes the next word, its target, with it
+        if [[ ${w} =~ ^[0-9]*[\<\>] ]]; then
+            [[ ${w} =~ ^[0-9]*[\<\>]+\|?$ ]] && i=$((i + 1))
+            continue
+        fi
         if [[ ${w} == -* ]]; then
             ha_value_flag "${w}" && i=$((i + 1))
             continue
@@ -425,8 +431,13 @@ fi
 # `bash -c "ha-integrations delete x"`, `ap\ps` and xargs/loop forms still
 # show the tool and its subcommand as words. A command substitution leaves the
 # word $SUBST behind, so `ha core $(echo restart)` does not end at `ha core`.
+# fd duplications (2>&1, >&2) go and both-streams forms (&>, >&FILE) become
+# `>` before the split, so their `&` cannot cut `ha backups 2>&1 restore x`
+# into a harmless `ha backups` and a separate `1 restore x`.
 loose_segments() {
-    strip_comments "$1" | tr -d "\"'\\\\" | sed -E 's/\$\(|`/ $SUBST\n/g; s/[;&|()]/\n/g'
+    strip_comments "$1" | tr -d "\"'\\\\" \
+        | sed -E 's/[0-9]*[<>]&[[:space:]]*[0-9-]+//g; s/&>/>/g; s/>&/>/g' \
+        | sed -E 's/\$\(|`/ $SUBST\n/g; s/[;&|()]/\n/g'
 }
 loose=''
 
