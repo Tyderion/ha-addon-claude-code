@@ -321,7 +321,12 @@ class CreateTest(Base):
 
 class UpdateTest(Base):
     def test_rename_keeps_old_name_as_alias_and_id(self):
-        self.write("templates.yaml", "x: \"{{ area_entities('kitchen') }}\"\n")
+        self.write(
+            "templates.yaml",
+            "x: \"{{ area_entities('Kitchen') }}\"\n"
+            # The exact id: Home Assistant tries it as an id first, so it survives
+            "y: \"{{ area_entities('kitchen') }}\"\n",
+        )
         code, out, _ = self.run_tool("update", "area", "Kitchen", "--name", "Pantry")
         self.assertEqual(code, 0, out)
         sent = self.fake.writes[0]
@@ -329,7 +334,10 @@ class UpdateTest(Base):
         self.assertEqual((sent["name"], sent["aliases"]), ("Pantry", ["Kitchen"]))
         self.assertTrue(out["verified"])
         # Listed, but no warning: the alias keeps it working
-        self.assertEqual(out["templates_using_old_name"][0]["file"], "templates.yaml")
+        self.assertEqual(
+            [(r["file"], r["line"]) for r in out["templates_using_old_name"]],
+            [("templates.yaml", 1)],
+        )
         self.assertNotIn("stop finding", " ".join(out["notes"]))
 
     def test_rename_without_alias_warns(self):
@@ -379,6 +387,33 @@ class UpdateTest(Base):
         )
         self.run_tool("update", "area", "Living Room", "--add-alias", "Salon")
         self.assertEqual(self.fake.writes[1]["aliases"], ["Lounge", "Salon"])
+
+    def test_flags_take_several_values(self):
+        code, out, _ = self.run_tool(
+            "update", "area", "Storage", "--add-label", "Battery", "night"
+        )
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.fake.writes[0]["labels"], ["battery", "night"])
+        code, out, _ = self.run_tool(
+            "create", "area", "Attic", "--alias", "Loft", "Roof space"
+        )
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.fake.writes[1]["aliases"], ["Loft", "Roof space"])
+
+    def test_clearing_colour_description_level(self):
+        self.fake.reg["label"][0]["description"] = "after dark"
+        self.run_tool("update", "label", "Night", "--no-color", "--no-description")
+        self.assertEqual(
+            self.fake.writes[0],
+            {
+                "type": "config/label_registry/update",
+                "label_id": "night",
+                "color": None,
+                "description": None,
+            },
+        )
+        self.run_tool("update", "floor", "First Floor", "--no-level")
+        self.assertIsNone(self.fake.writes[1]["level"])
 
     def test_alias_resolves_the_target(self):
         code, out, _ = self.run_tool("update", "area", "lounge", "--icon", "mdi:tv")

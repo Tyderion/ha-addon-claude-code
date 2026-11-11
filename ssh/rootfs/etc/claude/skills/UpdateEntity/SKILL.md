@@ -3,11 +3,12 @@ name: UpdateEntity
 description:
   Change how an entity or device is registered (name, area, labels, icon,
   hidden or disabled flag, entity_id) through the registry API. USE WHEN
-  renaming an entity or device, moving it to another area, labelling it,
-  setting an icon, hiding it, or changing an entity_id. NOT FOR pausing an automation
-  (automation.turn_off via CallService; a registry disable removes it) or
-  disabling an integration (ManageIntegration), or creating an area,
-  floor or label (ManageAreas).
+  renaming an entity or device, moving it to another area, adding or
+  removing a label on it, setting an icon, hiding it, or changing an
+  entity_id. NOT FOR pausing an automation (automation.turn_off via
+  CallService; a registry disable removes it), disabling an integration
+  (ManageIntegration), or the areas, floors and labels themselves:
+  creating, renaming, changing or deleting one (ManageAreas).
 ---
 
 # UpdateEntity
@@ -70,7 +71,8 @@ ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling
 ## Workflow
 
 1. **Areas and labels:** `ha-areas list` lists both. `--area` and the
-   label flags take a name or id, case-insensitive; a missing one errors
+   label flags take a name or id with case and spaces ignored (`--area`
+   also takes an area's alias); a missing one errors
    with the existing names. Create a new one with `ha-areas create`
    (ManageAreas) first, after checking with the user that it should exist.
 2. **Entity or device?** A physical thing ("move the lamp to the bedroom",
@@ -107,10 +109,15 @@ ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling
 - Several entity_ids work only with `--add-label`/`--remove-label` (and
   `--device`, `--dry-run`); every other flag changes one entity at a time.
   All of them are looked up before the first change, so a typo changes
-  nothing. The output is then `{updated: [...]}`, one report each.
-- Labels are added and removed, never replaced: the entity's other labels
-  stay. An entity's labels are its own; a device's labels (`--device`) are
-  separate, and `ha-entities list --label` matches only the entity's.
+  nothing. The output is then `{updated: [...]}`, one report each; if Home
+  Assistant rejects one write, that report has an `error`, the others
+  still apply and show, and the exit code is 1.
+- The label flags take one or more names (`--add-label Night Battery`);
+  put the entity_ids before them. Labels are added and removed, never
+  replaced: the entity's other labels stay, and removing a label it
+  doesn't carry is a no-op. An entity's labels are its own; a device's
+  labels (`--device`) are separate, and `ha-entities list --label` matches
+  only the entity's.
 - Home Assistant refuses to enable an entity whose device is disabled;
   enable the device first (its integration via ManageIntegration, or the
   UI).
@@ -119,7 +126,8 @@ ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling
   already exists. The tool never asks; the add-on's permission hook asks
   the user before a real `rename`, while `--dry-run` runs without asking.
 - Any refusal prints `Error: ...` on stderr and exits 1 with nothing
-  applied; the text says what to fix.
+  applied; the text says what to fix. A malformed command line (unknown
+  flag, two exclusive flags) prints `ha-entities: error: ...` and exits 2.
 - The token's user must be an administrator: with a non-admin token,
   `update` and `rename` fail with `Unauthorized`, while `list`, `get` and
   `refs` still work.

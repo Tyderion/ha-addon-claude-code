@@ -4,12 +4,13 @@ description:
   Look up entities and their current state with ha-entities, such as finding
   an entity_id by name, reading a state or attribute (battery, temperature,
   open/closed), or listing entities, areas, domains, scripts and
-  automations. USE WHEN "is the garage door open", "what's the battery of
-  X", "which lights are on", "find the kitchen lamp", and before writing
-  anything that names an entity. NOT FOR the past (QueryHistory), what uses
-  an entity (FindReferences), or which device an entity belongs to and
-  which devices are in an area (TestTemplate). Never guess entity IDs, curl
-  the API or read .storage for this.
+  automations, filtered by domain, area, label, state or name. USE WHEN "is
+  the garage door open", "what's the battery of X", "which lights are on",
+  "which lights are in the kitchen", "find the kitchen lamp", and before
+  writing anything that names an entity. NOT FOR the past (QueryHistory),
+  what uses an entity (FindReferences), which device owns an entity
+  (TestTemplate), or everything an area, floor or label holds (ManageAreas).
+  Never guess entity IDs, curl the API or read .storage for this.
 ---
 
 # FindEntities

@@ -17,7 +17,7 @@ from toolharness import load_tool, run_tool
 
 AREAS = [
     {"area_id": "kitchen", "name": "Kitchen"},
-    {"area_id": "living_room", "name": "Living Room"},
+    {"area_id": "living_room", "name": "Living Room", "aliases": ["Lounge"]},
     {"area_id": "storage", "name": "Storage"},
 ]
 LABELS = [
@@ -249,6 +249,14 @@ class UpdateTest(Base):
         self.assertEqual(code, 1)
         self.assertFalse(out["verified"])
 
+    def test_area_matches_like_ha_areas(self):
+        for value in ("livingroom", "lounge"):
+            self.fake.updates.clear()
+            self.fake.entities["light.lamp"]["area_id"] = None
+            code, _, err = self.run_tool("update", "light.lamp", "--area", value)
+            self.assertEqual(code, 0, err)
+            self.assertEqual(self.fake.updates[0]["area_id"], "living_room")
+
     def test_unknown_area_points_at_ha_areas(self):
         code, _, err = self.run_tool("update", "light.lamp", "--area", "Garage")
         self.assertIn("ha-areas create area", err)
@@ -282,6 +290,29 @@ class LabelTest(Base):
                 }
             ],
         )
+
+    def test_several_labels_after_one_flag(self):
+        self.run_tool("update", "light.lamp_2", "--add-label", "Night", "battery")
+        self.assertEqual(self.fake.updates[0]["labels"], ["battery", "night"])
+
+    def test_failed_write_still_reports_the_others(self):
+        original = self.fake.__call__
+
+        def failing_second(command):
+            if command.get("entity_id") == "light.lamp_2" and command["type"].endswith(
+                "/update"
+            ):
+                raise RuntimeError("'config/entity_registry/update' failed: boom")
+            return original(command)
+
+        self.tool.ha_result = failing_second
+        code, out, _ = self.run_tool(
+            "update", "light.lamp", "light.lamp_2", "--add-label", "battery"
+        )
+        self.assertEqual(code, 1)
+        first, second = out["updated"]
+        self.assertTrue(first["verified"])
+        self.assertIn("boom", second["error"])
 
     def test_remove(self):
         self.run_tool("update", "light.lamp", "--remove-label", "night")

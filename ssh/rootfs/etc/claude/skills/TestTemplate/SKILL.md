@@ -1,11 +1,11 @@
 ---
 name: TestTemplate
-description: Render Jinja templates against live state, and answer device, area,
-  integration and label membership questions with template functions
-  (area_devices, device_entities, integration_entities, label_entities)
-  that ha-entities lacks. USE WHEN writing or debugging a template, a
-  template sensor doesn't update, or "which devices are in the kitchen",
-  "what device is sensor.x part of". Verify with ha-template rather than
+description: Render Jinja templates against live state, and answer which
+  device owns an entity and which entities an integration provides with
+  template functions (device_attr, device_entities, integration_entities).
+  USE WHEN writing or debugging a template, a template sensor doesn't
+  update, or "what device is sensor.x part of". NOT FOR what an area, floor
+  or label holds (ManageAreas). Verify with ha-template rather than
   reasoning about Jinja from memory.
 ---
 
@@ -36,10 +36,11 @@ nothing has no `listeners` key at all.
 
 ## Membership questions
 
-`ha-entities` lists entities, areas and domains, but cannot say which
-devices an area holds, which device owns an entity, or what an
-integration or label covers. Template functions answer that from Home
-Assistant's own registries, so use them instead of reading `.storage`:
+Which device owns an entity and what an integration covers have no tool;
+template functions answer them from Home Assistant's own registries, so
+use them instead of reading `.storage`. What an area, floor or label holds
+is `ha-areas show` (ManageAreas); the area and label functions below are
+for templates you are writing, and to check what they return:
 
 ```bash
 ha-template '{{ area_devices("Kitchen") | map("device_attr", "name") | list }}'

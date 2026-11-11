@@ -38,21 +38,21 @@ Entities, areas, services, and integrations change without this file changing. *
 | Question | Use |
 |---|---|
 | What is X right now? (state, battery, temperature, open/closed, unavailable) What is the entity ID for X? | `FindEntities` (`ha-entities get` / `list --search`) |
-| What areas / domains / scripts / automations exist? | `FindEntities` (`areas`, `domains`, `scripts`, `automations`) |
-| Which floors or labels exist? What is in an area, on a floor, or carries a label? | `ManageAreas` (`ha-areas list` / `show`) |
+| What domains / scripts / automations exist? Which lights (or other entities) are in an area or carry a label? | `FindEntities` (`domains`, `scripts`, `automations`, `list --area` / `--label`) |
+| Which areas, floors or labels exist? Everything an area or floor holds, or what carries a label? | `ManageAreas` (`ha-areas list` / `show`) |
 | Which device owns an entity, which entities come from an integration? | `TestTemplate` (`device_attr`, `integration_entities`, ...) |
 | Turn something on or off, run a script, activate a scene, set a thermostat, send a notification | `CallService` (`ha-service show`, then `call`) |
 | Pausing or switching off an automation | `CallService` (`automation.turn_off`), not a registry disable |
 | What fields does this service take? What are the valid values? | `CallService`: check `ha-service show` before writing service data anywhere |
 | Setting helper/virtual state (booleans, selects, numbers, timers, counters) | `SetState` (`ha-state`); raw service calls on these domains are refused |
 | Creating a helper | Toggles, dropdowns, numbers, text, datetime: an `input_*` block in YAML plus `ReloadConfig`. Template, group, threshold, utility meter: `ManageIntegration` (`handlers --helpers`) |
-| Creating, renaming or deleting an area, floor or label | `ManageAreas` (`ha-areas`) |
+| Creating, renaming, changing (floor, icon, colour, aliases) or deleting an area, floor or label | `ManageAreas` (`ha-areas`) |
 | Does this Jinja template work? What does it evaluate to? | `TestTemplate` |
 | What happened in the past? How long / how often / when last? | `QueryHistory` |
 | Who or what changed X? Was it an automation, a person, the device itself? | `QueryHistory` (`ha-history logbook`) |
 | Something is unavailable or stopped working | `FindEntities get`, then `ManageIntegration` (`list --failing`), then `QueryHistory` for since when |
 | Why didn't this automation fire, or what did it actually do? | `DebugAutomation` (traces, not YAML guesswork) |
-| Renaming an entity or device, moving it to an area, labelling it, icon, hide/disable, changing an entity_id | `UpdateEntity` (`ha-entities update` / `rename`) |
+| Renaming an entity or device, moving it to an area, adding or removing a label, icon, hide/disable, changing an entity_id | `UpdateEntity` (`ha-entities update` / `rename`) |
 | What uses this entity or device? Is it safe to rename, remove or replace? | `FindReferences` (`ha-entities refs`); covers UI dashboards, helpers and device triggers that a grep misses |
 | Adding, configuring, renaming, reloading, disabling or removing an integration; which integrations are failing | `ManageIntegration` (`ha-integrations`); **never** read or edit `.storage/core.config_entries` |
 | Which secrets exist; creating, referencing or test-firing a webhook; adding an API key | `ManageSecrets` (`ha-secrets`); **never** cat, grep, Read or append to `secrets.yaml`, and never curl a webhook by hand |

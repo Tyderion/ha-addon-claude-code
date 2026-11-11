@@ -396,10 +396,18 @@ def get_registry_entry(entity_id):
 
 
 def resolve_area(area_reg, value):
-    """Map an area name or area_id (case-insensitive) to its area_id."""
-    wanted = value.strip().lower()
+    """Map an area_id, name or alias to its area_id, matched as ha-areas does:
+    the id case-insensitively, then names and aliases with case and spaces
+    ignored, names first."""
+    wanted = normalize(value.strip())
     for a in area_reg:
-        if a["area_id"].lower() == wanted or a.get("name", "").lower() == wanted:
+        if a["area_id"].casefold() == value.strip().casefold():
+            return a["area_id"]
+    for a in area_reg:
+        if normalize(a.get("name", "")) == wanted:
+            return a["area_id"]
+    for a in area_reg:
+        if any(normalize(alias) == wanted for alias in a.get("aliases") or []):
             return a["area_id"]
     names = ", ".join(sorted(a.get("name", a["area_id"]) for a in area_reg))
     raise RuntimeError(
@@ -531,12 +539,24 @@ def cmd_update(args):
     # Every entity is looked up before the first write, so a typo in the
     # third entity_id cannot leave the first two changed
     targets = [find_target(eid, args.device, devices) for eid in entity_ids]
-    outputs = [
-        update_one(eid, *target, args, area_reg, label_reg, labels)
-        for eid, target in zip(entity_ids, targets)
-    ]
-    print_output(outputs[0] if len(outputs) == 1 else {"updated": outputs}, args.format)
-    if any(o.get("verified") is False for o in outputs):
+    if len(entity_ids) == 1:
+        output = update_one(
+            entity_ids[0], *targets[0], args, area_reg, label_reg, labels
+        )
+        print_output(output, args.format)
+        if output.get("verified") is False:
+            sys.exit(1)
+        return
+    # One write failing must not hide the ones before it: every entity gets a
+    # report, a failed one with its error
+    outputs = []
+    for eid, target in zip(entity_ids, targets):
+        try:
+            outputs.append(update_one(eid, *target, args, area_reg, label_reg, labels))
+        except RuntimeError as e:
+            outputs.append({"entity_id": eid, "error": str(e)})
+    print_output({"updated": outputs}, args.format)
+    if any(o.get("verified") is False or "error" in o for o in outputs):
         sys.exit(1)
 
 
@@ -926,12 +946,14 @@ def main():
         action="store_true",
         help="Apply --name/--area/labels to the entity's device instead of the entity",
     )
-    p_update.add_argument(
-        "--add-label", action="append", metavar="LABEL", help="Label name or id"
-    )
-    p_update.add_argument(
-        "--remove-label", action="append", metavar="LABEL", help="Label name or id"
-    )
+    for flag in ("--add-label", "--remove-label"):
+        p_update.add_argument(
+            flag,
+            action="extend",
+            nargs="+",
+            metavar="LABEL",
+            help="One or more label names or ids",
+        )
     name = p_update.add_mutually_exclusive_group()
     name.add_argument("--name", help="Set the display name")
     name.add_argument(

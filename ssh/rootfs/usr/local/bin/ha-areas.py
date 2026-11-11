@@ -11,12 +11,15 @@ Usage:
                   [--floor F | --no-floor] [--add-alias A] [--remove-alias A]
                   [--add-label L] [--remove-label L] [--dry-run]
   ha-areas update floor <name|id> [--name N] [--no-keep-alias] [--icon I | --no-icon]
-                  [--level N] [--add-alias A] [--remove-alias A] [--dry-run]
+                  [--level N | --no-level] [--add-alias A] [--remove-alias A]
+                  [--dry-run]
   ha-areas update label <name|id> [--name N] [--icon I | --no-icon]
-                  [--color C] [--description D] [--dry-run]
+                  [--color C | --no-color] [--description D | --no-description]
+                  [--dry-run]
   ha-areas delete <area|floor|label> <name|id> [--dry-run]
 
-All commands accept --format yaml|json (default: yaml).
+All commands accept --format yaml|json (default: yaml). --alias, --label and
+the --add-/--remove- flags take one or more values.
 
 A name or id is accepted wherever one is expected, compared the way Home
 Assistant compares names (case and spaces ignored); area and floor aliases
@@ -282,10 +285,12 @@ def template_patterns(kind):
     return call, pipe
 
 
-def scan_yaml(path, kind, item_id, template_names):
+def scan_yaml(path, kind, item_id, template_names, skip=None):
     """[(line, text)] where the file targets item_id or names it in a template.
 
-    With item_id None only template calls count.
+    With item_id None only template calls count. A template literal equal to
+    `skip` is ignored: Home Assistant tries a literal as an id before a name,
+    so the exact id still resolves after a rename.
     """
     keys = target_keys(kind)
     call, pipe = template_patterns(kind)
@@ -309,7 +314,7 @@ def scan_yaml(path, kind, item_id, template_names):
                     list_indent = len(key["indent"])
             for pattern in (call, pipe):
                 for m in pattern.finditer(line):
-                    if normalize(m.group(2)) in template_names:
+                    if m.group(2) != skip and normalize(m.group(2)) in template_names:
                         hit = True
             if hit:
                 hits.append((lineno, line.strip()[:160]))
@@ -342,9 +347,10 @@ def scan_storage(path, kind, item_id):
     return hits
 
 
-def find_targets(kind, item_id, template_names, root=None):
+def find_targets(kind, item_id, template_names, skip=None, root=None):
     """Config that names item_id (YAML keys, dashboards) or, in a template call,
-    one of template_names; item_id None scans templates only."""
+    one of template_names; item_id None scans templates only. `skip` as in
+    scan_yaml."""
     root = root or HA_CONFIG
     refs = []
     for dirpath, dirnames, filenames in os.walk(root):
@@ -366,7 +372,7 @@ def find_targets(kind, item_id, template_names, root=None):
                 elif filename.endswith((".yaml", ".yml")):
                     refs += [
                         {"file": rel, "line": n, "text": t}
-                        for n, t in scan_yaml(path, kind, item_id, template_names)
+                        for n, t in scan_yaml(path, kind, item_id, template_names, skip)
                     ]
             except OSError:
                 continue
@@ -555,13 +561,14 @@ def planned_update(kind, entry, args, regs, notes):
             labels.discard(entry_id("label", resolve("label", regs.labels, value)))
         if labels != set(entry.get("labels") or []):
             changes["labels"] = sorted(labels)
-    if kind == "floor" and args.level is not None:
-        changes["level"] = args.level
+    fields = {"floor": ("level",), "label": ("color", "description")}.get(kind, ())
     if kind == "label":
         check_color(args.color)
-        for field in ("color", "description"):
-            if getattr(args, field) is not None:
-                changes[field] = getattr(args, field)
+    for field in fields:
+        if getattr(args, f"no_{field}"):
+            changes[field] = None
+        elif getattr(args, field) is not None:
+            changes[field] = getattr(args, field)
 
     return {f: v for f, v in changes.items() if not same(entry.get(f), v)}
 
@@ -599,7 +606,9 @@ def cmd_update(args):
         for f, v in wanted.items()
     }
     if "name" in wanted and normalize(wanted["name"]) != normalize(entry["name"]):
-        old_name_refs = find_targets(kind, None, {normalize(entry["name"])})
+        old_name_refs = find_targets(
+            kind, None, {normalize(entry["name"])}, skip=item_id
+        )
         if old_name_refs:
             output["templates_using_old_name"] = old_name_refs
             if normalize(entry["name"]) not in map(
@@ -644,8 +653,8 @@ def cmd_delete(args):
     }[kind]
     output["note"] = (
         f"Deleting: {lost}. `targets` keep pointing at '{item_id}' and do nothing "
-        f"until a {kind} with the same name is created again (it gets the same id "
-        "if it is free); `related` only uses things inside it and keeps working."
+        "until one with the same name is created again (it gets the same id if it "
+        "is free); `related` only uses things inside it and keeps working."
     )
     if args.dry_run:
         output["dry_run"] = True
@@ -661,13 +670,16 @@ def cmd_delete(args):
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 
-def add_icon(p, update):
-    if update:
-        group = p.add_mutually_exclusive_group()
-        group.add_argument("--icon", help="Icon, e.g. mdi:sofa")
-        group.add_argument("--no-icon", action="store_true", help="Drop the icon")
-    else:
-        p.add_argument("--icon", help="Icon, e.g. mdi:sofa")
+def add_many(p, flag, metavar):
+    """A flag taking one or more values, and repeatable: --label A B --label C."""
+    p.add_argument(flag, action="extend", nargs="+", metavar=metavar)
+
+
+def add_cleared(p, flag, clear_help, **kwargs):
+    """--X VALUE or --no-X, never both."""
+    group = p.add_mutually_exclusive_group()
+    group.add_argument(f"--{flag}", **kwargs)
+    group.add_argument(f"--no-{flag}", action="store_true", help=clear_help)
 
 
 def add_rename(p, aliased):
@@ -679,8 +691,8 @@ def add_rename(p, aliased):
             action="store_false",
             help="Do not keep the old name as an alias",
         )
-        p.add_argument("--add-alias", action="append", metavar="ALIAS")
-        p.add_argument("--remove-alias", action="append", metavar="ALIAS")
+        add_many(p, "--add-alias", "ALIAS")
+        add_many(p, "--remove-alias", "ALIAS")
 
 
 def main():
@@ -709,36 +721,39 @@ def main():
     create = p_create.add_subparsers(dest="kind", metavar="kind", required=True)
     c_area = create.add_parser("area", parents=[FORMAT_PARENT])
     c_area.add_argument("--floor", help="Floor name or id")
-    c_area.add_argument("--label", action="append", metavar="LABEL")
-    c_area.add_argument("--alias", action="append", metavar="ALIAS")
+    add_many(c_area, "--label", "LABEL")
+    add_many(c_area, "--alias", "ALIAS")
     c_floor = create.add_parser("floor", parents=[FORMAT_PARENT])
     c_floor.add_argument("--level", type=int, help="0 ground, 1 first, -1 basement")
-    c_floor.add_argument("--alias", action="append", metavar="ALIAS")
+    add_many(c_floor, "--alias", "ALIAS")
     c_label = create.add_parser("label", parents=[FORMAT_PARENT])
     c_label.add_argument("--color", help="#RRGGBB or a theme colour such as red")
     c_label.add_argument("--description")
     for p in (c_area, c_floor, c_label):
         p.add_argument("name")
-        add_icon(p, update=False)
+        p.add_argument("--icon", help="Icon, e.g. mdi:sofa")
         p.set_defaults(func=cmd_create)
 
     p_update = sub.add_parser("update", help="Rename or change an area, floor or label")
     update = p_update.add_subparsers(dest="kind", metavar="kind", required=True)
     u_area = update.add_parser("area", parents=[FORMAT_PARENT])
-    floor = u_area.add_mutually_exclusive_group()
-    floor.add_argument("--floor", help="Floor name or id")
-    floor.add_argument("--no-floor", action="store_true", help="Take it off its floor")
-    u_area.add_argument("--add-label", action="append", metavar="LABEL")
-    u_area.add_argument("--remove-label", action="append", metavar="LABEL")
+    add_cleared(u_area, "floor", "Take it off its floor", help="Floor name or id")
+    add_many(u_area, "--add-label", "LABEL")
+    add_many(u_area, "--remove-label", "LABEL")
     u_floor = update.add_parser("floor", parents=[FORMAT_PARENT])
-    u_floor.add_argument("--level", type=int)
+    add_cleared(u_floor, "level", "Drop the level", type=int)
     u_label = update.add_parser("label", parents=[FORMAT_PARENT])
-    u_label.add_argument("--color", help="#RRGGBB or a theme colour such as red")
-    u_label.add_argument("--description")
+    add_cleared(
+        u_label,
+        "color",
+        "Drop the colour",
+        help="#RRGGBB or a theme colour such as red",
+    )
+    add_cleared(u_label, "description", "Drop the description")
     for p, aliased in ((u_area, True), (u_floor, True), (u_label, False)):
         p.add_argument("ref", metavar="name_or_id")
         add_rename(p, aliased)
-        add_icon(p, update=True)
+        add_cleared(p, "icon", "Drop the icon", help="Icon, e.g. mdi:sofa")
         p.add_argument(
             "--dry-run", action="store_true", help="Show the changes without applying"
         )

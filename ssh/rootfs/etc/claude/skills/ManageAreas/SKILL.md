@@ -1,6 +1,6 @@
 ---
 name: ManageAreas
-description: Areas, floors and labels through ha-areas. USE WHEN the user asks which floors or labels exist, what is in an area, on a floor or carries a label, or wants an area, floor or label created, renamed, changed (icon, colour, floor, aliases) or deleted. NOT FOR putting an entity or device into an area or labelling it (UpdateEntity, `ha-entities update`), or listing the entities of an area (FindEntities).
+description: Areas, floors and labels through ha-areas. USE WHEN asking which areas, floors or labels exist, everything an area or floor holds (devices and entities, empty areas too) or what carries a label, or to create, rename, change (floor, icon, colour, aliases) or delete an area, floor or label. NOT FOR adding an entity or device to an area or label (UpdateEntity), or entities of an area filtered by domain, state or name, such as "which lights are in the kitchen" (FindEntities).
 ---
 
 # ManageAreas
@@ -18,16 +18,18 @@ ha-areas create area  <name> [--floor F] [--icon I] [--alias A ...] [--label L .
 ha-areas create floor <name> [--level N] [--icon I] [--alias A ...]
 ha-areas create label <name> [--color C] [--icon I] [--description D]
 ha-areas update area  <name|id> [--name N] [--no-keep-alias] [--icon I | --no-icon]
-                      [--floor F | --no-floor] [--add-alias A] [--remove-alias A]
-                      [--add-label L] [--remove-label L] [--dry-run]
+                      [--floor F | --no-floor] [--add-alias A ...] [--remove-alias A ...]
+                      [--add-label L ...] [--remove-label L ...] [--dry-run]
 ha-areas update floor <name|id> [--name N] [--no-keep-alias] [--icon I | --no-icon]
-                      [--level N] [--add-alias A] [--remove-alias A] [--dry-run]
+                      [--level N | --no-level] [--add-alias A ...] [--remove-alias A ...]
+                      [--dry-run]
 ha-areas update label <name|id> [--name N] [--icon I | --no-icon]
-                      [--color C] [--description D] [--dry-run]
+                      [--color C | --no-color] [--description D | --no-description]
+                      [--dry-run]
 ha-areas delete <area|floor|label> <name|id> [--dry-run]
 ```
 
-Output is YAML by default (`--format json` after the kind for JSON). Wherever a name or id is expected, any of them works, with case and spaces ignored the way Home Assistant compares names; area and floor aliases count too. An unknown one errors with the existing names and nothing is sent.
+`list` takes the plural (`labels`), every other command the singular (`label`). `--alias`, `--label` and the `--add-`/`--remove-` flags take one or more values (`--add-label Night Battery`); put the name or id before them. Output is YAML by default (`--format json` at the end for JSON). Wherever a name or id is expected, any of them works, with case and spaces ignored the way Home Assistant compares names; area and floor aliases count too. An unknown one errors with the existing names and nothing is sent.
 
 ## Examples
 
@@ -36,7 +38,7 @@ Output is YAML by default (`--format json` after the kind for JSON). Wherever a 
 ha-areas list floors
 ha-areas create area "Guest Room" --floor "First Floor" --icon mdi:bed
 
-# "Label the hallway lights 'night'": find them, then one call
+# "Label the hallway lights 'night'" is UpdateEntity's job; for reference:
 ha-entities list --area Hallway --domain light
 ha-entities update light.hallway_ceiling light.hallway_spots --add-label Night
 
@@ -63,7 +65,7 @@ ha-areas delete area Storage
 
 ## Gotchas
 
-- `update` changes aliases and labels one at a time; everything else the area or floor had stays. `changes` shows each field before and after, `verified: false` (exit 1) means the read-back differed.
+- `update` adds and removes aliases and labels; everything else the area or floor had stays. Removing a label it doesn't carry is a no-op, removing an alias it doesn't have is an error. `--no-color`, `--no-description`, `--no-level` and `--no-icon` clear a field. `changes` shows each field before and after, `verified: false` (exit 1) means the read-back differed.
 - Label colours: `#RRGGBB` or a theme name (`red`, `indigo`, `light-blue`, `blue-grey`, ...); the error lists all 26. Icons need their prefix (`mdi:sofa`).
 - Floor `--level` is an integer: 0 ground, 1 first, -1 basement. `list` sorts floors by it.
 - Assigning an area is `ha-entities update --area`, also for devices (`--device`). An entity with its own area ignores its device's; `show area` lists those under `entities`, inherited ones under `entities_via_device`.
