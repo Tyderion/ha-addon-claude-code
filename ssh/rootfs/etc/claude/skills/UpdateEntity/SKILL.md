@@ -1,12 +1,13 @@
 ---
 name: UpdateEntity
 description:
-  Change how an entity or device is registered (name, area, icon, hidden or
-  disabled flag, entity_id) through the registry API. USE WHEN renaming an
-  entity or device, moving it to another area, setting an icon, hiding it,
-  or changing an entity_id. NOT FOR pausing an automation
+  Change how an entity or device is registered (name, area, labels, icon,
+  hidden or disabled flag, entity_id) through the registry API. USE WHEN
+  renaming an entity or device, moving it to another area, labelling it,
+  setting an icon, hiding it, or changing an entity_id. NOT FOR pausing an automation
   (automation.turn_off via CallService; a registry disable removes it) or
-  disabling an integration (ManageIntegration).
+  disabling an integration (ManageIntegration), or creating an area,
+  floor or label (ManageAreas).
 ---
 
 # UpdateEntity
@@ -28,7 +29,10 @@ ha-entities update <entity_id> [--device]
                    [--area AREA | --no-area]
                    [--icon ICON | --reset-icon]
                    [--hidden | --visible] [--disable | --enable]
+                   [--add-label LABEL ...] [--remove-label LABEL ...]
                    [--dry-run]
+ha-entities update <entity_id> <entity_id> ... [--device]
+                   [--add-label LABEL ...] [--remove-label LABEL ...]
 ha-entities rename <entity_id> <new_entity_id> [--dry-run]
 ```
 
@@ -54,6 +58,10 @@ ha-entities update light.hue_color_lamp_1 --reset-name --no-area
 ha-entities update sensor.lamp_signal_strength --hidden
 ha-entities update sensor.lamp_signal_strength --disable
 
+# Label several entities in one call; other labels they carry stay
+ha-entities update light.hallway_ceiling light.hallway_spots --add-label Night
+ha-entities update light.hallway_spots --remove-label Night
+
 # Change an entity_id: see what uses it first, then rename
 ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling --dry-run
 ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling
@@ -61,9 +69,10 @@ ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling
 
 ## Workflow
 
-1. **Areas:** `ha-entities areas` lists them. `--area` takes a name or
-   area_id, case-insensitive; a missing area errors with the existing
-   names, and a new one has to be created in the UI first.
+1. **Areas and labels:** `ha-areas list` lists both. `--area` and the
+   label flags take a name or id, case-insensitive; a missing one errors
+   with the existing names. Create a new one with `ha-areas create`
+   (ManageAreas) first, after checking with the user that it should exist.
 2. **Entity or device?** A physical thing ("move the lamp to the bedroom",
    "call the plug Coffee Machine") is usually a `--device` change: most
    integrations display device name plus entity name, and a device
@@ -95,6 +104,13 @@ ha-entities rename light.hue_color_lamp_1 light.kitchen_ceiling
   YAML, or in `customize.yaml` for friendly_name and icon.
 - `--icon`, `--hidden`/`--visible` and `--disable`/`--enable` are
   entity-only; they are refused together with `--device`.
+- Several entity_ids work only with `--add-label`/`--remove-label` (and
+  `--device`, `--dry-run`); every other flag changes one entity at a time.
+  All of them are looked up before the first change, so a typo changes
+  nothing. The output is then `{updated: [...]}`, one report each.
+- Labels are added and removed, never replaced: the entity's other labels
+  stay. An entity's labels are its own; a device's labels (`--device`) are
+  separate, and `ha-entities list --label` matches only the entity's.
 - Home Assistant refuses to enable an entity whose device is disabled;
   enable the device first (its integration via ManageIntegration, or the
   UI).

@@ -18,3 +18,4 @@ unchanged	cd /tmp && python3 ha-state_dump.py
 unchanged	rg ha-state /homeassistant
 ha-secrets keys	./ha-secrets keys
 ha-secrets fire k	python3 /usr/local/bin/ha-secrets.py fire k
+ha-areas list	./ha-areas list

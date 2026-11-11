@@ -30,8 +30,9 @@ returns hundreds of entities.
 ## Commands
 
 ```bash
-ha-entities list [--domain DOMAIN ...] [--area AREA] [--state STATE]
-                 [--search TEXT] [--exclude-unavailable] [--limit N]
+ha-entities list [--domain DOMAIN ...] [--area AREA] [--label LABEL]
+                 [--state STATE] [--search TEXT] [--exclude-unavailable]
+                 [--limit N]
 ha-entities get <entity_id> [<entity_id> ...]
 ha-entities domains
 ha-entities areas
@@ -44,6 +45,8 @@ subcommand for JSON. All `list` filters are case-insensitive:
 
 - `--area` matches the area's `name` exactly, never its `area_id`. An
   entity is in an area when it has one itself or inherits its device's.
+- `--label` takes a label's name or id and matches the entity's own
+  labels, not its device's. An unknown label errors with the existing ones.
 - `--state` is an exact match on the state string (`on`, `unavailable`,
   `23.5`), not a substring or numeric comparison.
 - `--exclude-unavailable` drops `unavailable` and `unknown`.
@@ -81,7 +84,7 @@ hint; broaden the search text instead.
 ### `get`
 
 A list of entities with all attributes, last_changed, last_updated,
-domain, area, name. Unknown entity_ids print a warning on stderr and are
+domain, area, labels (names), name. Unknown entity_ids print a warning on stderr and are
 skipped; if none resolve, it exits 1.
 
 ### `domains`
@@ -90,9 +93,9 @@ skipped; if none resolve, it exits 1.
 
 ### `areas`
 
-`{areas: [{area_id, name, entity_count}, …]}` sorted by count descending.
-Only areas holding at least one entity are listed; the `hint` on a
-zero-match `--area` lists every area, including empty ones.
+`{areas: [{area_id, name, entity_count}, …]}` sorted by count descending,
+every area including empty ones. Floors and labels, and what an area
+holds: `ha-areas list` / `show` (ManageAreas).
 
 ### `scripts` and `automations`
 
@@ -104,8 +107,9 @@ to map an alias to one.
 
 ## Not this skill
 
-- Changing names, areas, icons, visibility or entity_ids: `ha-entities update` / `rename` (UpdateEntity).
+- Changing names, areas, labels, icons, visibility or entity_ids: `ha-entities update` / `rename` (UpdateEntity).
+- Floors and labels, creating or deleting areas: `ha-areas` (ManageAreas).
 - What uses an entity or device: `ha-entities refs` (FindReferences).
-- Which device owns an entity, which devices are in an area, labels: template functions via `ha-template` (TestTemplate).
+- Which device owns an entity: template functions via `ha-template` (TestTemplate).
 - Past states and statistics: `ha-history` (QueryHistory).
 - The integration an entity comes from, its setup and options: `ha-integrations` (ManageIntegration).

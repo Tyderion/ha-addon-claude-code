@@ -23,6 +23,9 @@
 #   ha-integrations delete / disable
 #                 removing or unloading an integration takes its devices and
 #                 entities with it
+#   ha-areas delete
+#                 an area, floor or label leaves every device, entity and area
+#                 that had it, and config that targets it stops doing anything
 #                 Each asks unless that command segment is a --dry-run (which
 #                 only reports what would change; one inside a `#` comment
 #                 does not count). A permission rule could
@@ -440,10 +443,10 @@ if [[ ${plain} =~ ${ha_word} ]]; then
     done <<< "${loose}"
 fi
 
-[[ ${plain} == *.storage* || ${plain} == *ha-entities* || ${plain} == *ha-integrations* || ${plain} == *ha-secrets* || ${plain} == *ha-service* || ${plain} == *ha-dashboard* ]] || exit 0
+[[ ${plain} == *.storage* || ${plain} == *ha-entities* || ${plain} == *ha-integrations* || ${plain} == *ha-secrets* || ${plain} == *ha-service* || ${plain} == *ha-dashboard* || ${plain} == *ha-areas* ]] || exit 0
 shopt -s extglob
 bare=$(strip_single_quotes "${cmd}") \
-    || ask "This shell command could not be parsed, and it touches .storage, the entity registry, integrations, secrets or services."
+    || ask "This shell command could not be parsed, and it touches .storage, the entity registry, integrations, secrets, services or areas."
 # Drop fd duplications (2>&1, >&2, <&3, >&-) and turn the both-streams forms
 # (&>, >&FILE) into a plain `>`, so the split below only sees real `&`
 # separators and every file redirect keeps its target
@@ -464,6 +467,9 @@ while IFS= read -r segment; do
                 ;;
             'ha-integrations delete')
                 reason="Deleting an integration removes its devices and entities; automations, scripts and dashboards that use them break."
+                ;;
+            'ha-areas delete')
+                reason="Deleting an area, floor or label takes it off every device, entity and area that has it; automations and dashboards that target it stop doing anything."
                 ;;
             'ha-integrations disable')
                 reason="Disabling an integration unloads it; its entities stay unavailable until it is enabled again."

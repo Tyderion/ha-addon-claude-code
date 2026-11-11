@@ -18,9 +18,20 @@ from toolharness import load_tool, run_tool
 AREAS = [
     {"area_id": "kitchen", "name": "Kitchen"},
     {"area_id": "living_room", "name": "Living Room"},
+    {"area_id": "storage", "name": "Storage"},
+]
+LABELS = [
+    {"label_id": "night", "name": "Night"},
+    {"label_id": "battery", "name": "Battery"},
 ]
 DEVICES = [
-    {"id": "dev1", "name": "Hue Lamp", "name_by_user": None, "area_id": "kitchen"}
+    {
+        "id": "dev1",
+        "name": "Hue Lamp",
+        "name_by_user": None,
+        "area_id": "kitchen",
+        "labels": [],
+    }
 ]
 ENTITIES = [
     {
@@ -31,8 +42,9 @@ ENTITIES = [
         "icon": None,
         "hidden_by": None,
         "disabled_by": None,
+        "labels": ["night"],
     },
-    {"entity_id": "light.lamp_2", "device_id": None, "name": "Other"},
+    {"entity_id": "light.lamp_2", "device_id": None, "name": "Other", "labels": []},
     {"entity_id": "sensor.lamp_power", "device_id": "dev1", "name": None},
 ]
 # What HA's search/related returns, including upward relations that refs
@@ -77,6 +89,8 @@ class FakeHA:
             return copy.deepcopy(STATES)
         if kind == "config/area_registry/list":
             return copy.deepcopy(AREAS)
+        if kind == "config/label_registry/list":
+            return copy.deepcopy(LABELS)
         if kind == "config/device_registry/list":
             return list(copy.deepcopy(self.devices).values())
         if kind == "config/entity_registry/list":
@@ -234,6 +248,101 @@ class UpdateTest(Base):
         code, out, _ = self.run_tool("update", "light.lamp", "--name", "X")
         self.assertEqual(code, 1)
         self.assertFalse(out["verified"])
+
+    def test_unknown_area_points_at_ha_areas(self):
+        code, _, err = self.run_tool("update", "light.lamp", "--area", "Garage")
+        self.assertIn("ha-areas create area", err)
+
+
+class LabelTest(Base):
+    def test_add_keeps_existing_labels_and_shows_names(self):
+        code, out, _ = self.run_tool("update", "light.lamp", "--add-label", "battery")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.fake.updates[0]["labels"], ["battery", "night"])
+        self.assertEqual(
+            out["changes"]["labels"],
+            {"before": ["Night"], "after": ["Battery", "Night"]},
+        )
+        self.assertTrue(out["verified"])
+
+    def test_several_entities_in_one_call(self):
+        code, out, _ = self.run_tool(
+            "update", "light.lamp", "light.lamp_2", "--add-label", "Night"
+        )
+        self.assertEqual(code, 0)
+        reports = {r["entity_id"]: r for r in out["updated"]}
+        self.assertEqual(reports["light.lamp"]["note"], "already set; nothing to do")
+        self.assertEqual(
+            self.fake.updates,
+            [
+                {
+                    "type": "config/entity_registry/update",
+                    "entity_id": "light.lamp_2",
+                    "labels": ["night"],
+                }
+            ],
+        )
+
+    def test_remove(self):
+        self.run_tool("update", "light.lamp", "--remove-label", "night")
+        self.assertEqual(self.fake.updates[0]["labels"], [])
+
+    def test_device_labels(self):
+        self.run_tool("update", "light.lamp", "--device", "--add-label", "night")
+        self.assertEqual(
+            self.fake.updates[0],
+            {
+                "type": "config/device_registry/update",
+                "device_id": "dev1",
+                "labels": ["night"],
+            },
+        )
+
+    def test_unknown_label_or_entity_sends_nothing(self):
+        code, _, err = self.run_tool("update", "light.lamp", "--add-label", "nope")
+        self.assertEqual(code, 1)
+        self.assertIn("Existing labels: Battery, Night", err)
+        code, _, err = self.run_tool(
+            "update", "light.lamp", "light.nope", "--add-label", "night"
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(self.fake.updates, [])
+
+    def test_several_entities_only_with_label_flags(self):
+        code, _, err = self.run_tool(
+            "update", "light.lamp", "light.lamp_2", "--name", "X"
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("one entity at a time", err)
+        self.assertEqual(self.fake.updates, [])
+
+    def test_labels_compared_as_a_set(self):
+        original = self.fake.__call__
+
+        def reversed_labels(command):
+            result = original(command)
+            if command["type"] == "config/entity_registry/update":
+                entry = result["entity_entry"]
+                entry["labels"] = list(reversed(entry["labels"]))
+            return result
+
+        self.tool.ha_result = reversed_labels
+        code, out, _ = self.run_tool("update", "light.lamp", "--add-label", "battery")
+        self.assertEqual(code, 0)
+        self.assertTrue(out["verified"])
+
+    def test_get_and_list_show_labels(self):
+        code, out, _ = self.run_tool("get", "light.lamp")
+        self.assertEqual(out[0]["labels"], ["Night"])
+        code, out, _ = self.run_tool("list", "--label", "night")
+        self.assertEqual([e["entity_id"] for e in out["entities"]], ["light.lamp"])
+
+    def test_areas_lists_empty_ones(self):
+        code, out, _ = self.run_tool("areas")
+        self.assertEqual(
+            [(a["area_id"], a["entity_count"]) for a in out["areas"]],
+            [("kitchen", 1), ("living_room", 0), ("storage", 0)],
+        )
 
 
 class ConfigTree(Base):

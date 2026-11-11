@@ -2,8 +2,9 @@
 """ha-entities — Query and update Home Assistant entities, areas, domains, scripts, and automations.
 
 Usage:
-  ha-entities list [--domain DOMAIN ...] [--area AREA] [--state STATE]
-                   [--search TEXT] [--exclude-unavailable] [--limit N]
+  ha-entities list [--domain DOMAIN ...] [--area AREA] [--label LABEL]
+                   [--state STATE] [--search TEXT] [--exclude-unavailable]
+                   [--limit N]
   ha-entities get <entity_id> [<entity_id> ...]
   ha-entities domains
   ha-entities areas
@@ -11,7 +12,10 @@ Usage:
   ha-entities automations
   ha-entities update <entity_id> [--device] [--name NAME | --reset-name]
                      [--area AREA | --no-area] [--icon ICON | --reset-icon]
-                     [--hidden | --visible] [--disable | --enable] [--dry-run]
+                     [--hidden | --visible] [--disable | --enable]
+                     [--add-label L ...] [--remove-label L ...] [--dry-run]
+  ha-entities update <entity_id> <entity_id> ... [--device]
+                     [--add-label L ...] [--remove-label L ...] [--dry-run]
   ha-entities rename <entity_id> <new_entity_id> [--dry-run]
   ha-entities refs <entity_id> [<entity_id> ...] [--device]
 
@@ -20,7 +24,9 @@ All commands accept --format yaml|json (default: yaml).
 `update` and `rename` go through the entity/device registry WebSocket API,
 which Home Assistant applies live; they never touch .storage files. Both
 print each changed field before and after and exit 1 if the read-back
-differs. `rename` lists every file that still references the old entity_id,
+differs. Labels are added and removed one by one, never replaced as a set,
+and several entities (or their devices) can get the same label change in one
+call. Areas, floors and labels themselves are made with ha-areas. `rename` lists every file that still references the old entity_id,
 since Home Assistant does not rewrite YAML.
 
 `refs` answers "what uses this entity?" from two sources: Home Assistant's
@@ -173,6 +179,12 @@ def cmd_list(args):
             for s in filtered
             if entity_areas.get(s["entity_id"], "").lower() == area_lower
         ]
+    if args.label:
+        label_id = resolve_label(label_registry(), args.label)
+        labelled = {
+            e["entity_id"] for e in entity_reg if label_id in (e.get("labels") or [])
+        }
+        filtered = [s for s in filtered if s["entity_id"] in labelled]
     if args.state:
         state_lower = args.state.lower()
         filtered = [s for s in filtered if s["state"].lower() == state_lower]
@@ -237,6 +249,8 @@ def cmd_get(args):
     states, entity_reg, device_reg, area_reg = fetch_all_data()
     entity_areas, _ = build_area_lookup(entity_reg, device_reg, area_reg)
     entity_names = build_entity_names(entity_reg)
+    entity_labels = {e["entity_id"]: e.get("labels") or [] for e in entity_reg}
+    label_reg = label_registry() if any(entity_labels.values()) else []
 
     # Build state lookup
     state_map = {s["entity_id"]: s for s in states}
@@ -255,6 +269,7 @@ def cmd_get(args):
             "state": s["state"],
             "name": get_name(s, entity_names),
             "area": entity_areas.get(eid),
+            "labels": label_names(label_reg, entity_labels.get(eid)),
             "domain": domain,
             "last_changed": s.get("last_changed"),
             "last_updated": s.get("last_updated"),
@@ -296,20 +311,17 @@ def cmd_areas(args):
         if area:
             area_counts[area] = area_counts.get(area, 0) + 1
 
-    # Build output with area_id
-    area_id_map = {a.get("name", a["area_id"]): a["area_id"] for a in area_reg}
-
-    areas = sorted(area_counts.items(), key=lambda x: -x[1])
-    output = {
-        "areas": [
-            {
-                "area_id": area_id_map.get(name, name),
-                "name": name,
-                "entity_count": count,
-            }
-            for name, count in areas
-        ]
-    }
+    # Every area in the registry, empty ones included
+    rows = [
+        {
+            "area_id": a["area_id"],
+            "name": area_names[a["area_id"]],
+            "entity_count": area_counts.get(area_names[a["area_id"]], 0),
+        }
+        for a in area_reg
+    ]
+    rows.sort(key=lambda r: (-r["entity_count"], r["name"].casefold()))
+    output = {"areas": rows}
     print_output(output, args.format)
 
 
@@ -392,8 +404,36 @@ def resolve_area(area_reg, value):
     names = ", ".join(sorted(a.get("name", a["area_id"]) for a in area_reg))
     raise RuntimeError(
         f"no area '{value}'. Existing areas: {names}. "
-        "Create new areas in Settings → Areas."
+        "Create one with `ha-areas create area <name>`."
     )
+
+
+def normalize(name):
+    """Home Assistant's name comparison: case and spaces ignored."""
+    return name.casefold().replace(" ", "")
+
+
+def label_registry():
+    return ha_result({"type": "config/label_registry/list"}) or []
+
+
+def resolve_label(label_reg, value):
+    """Map a label name or label_id to its label_id."""
+    for lab in label_reg:
+        if lab["label_id"].casefold() == value.strip().casefold() or normalize(
+            lab.get("name", "")
+        ) == normalize(value.strip()):
+            return lab["label_id"]
+    names = ", ".join(sorted(lab.get("name", lab["label_id"]) for lab in label_reg))
+    raise RuntimeError(
+        f"no label '{value}'. Existing labels: {names or 'none'}. "
+        "Create one with `ha-areas create label <name>`."
+    )
+
+
+def label_names(label_reg, label_ids):
+    names = {lab["label_id"]: lab.get("name", lab["label_id"]) for lab in label_reg}
+    return sorted(names.get(i, i) for i in label_ids or [])
 
 
 def area_label(area_reg, area_id):
@@ -403,9 +443,17 @@ def area_label(area_reg, area_id):
     return area_id
 
 
-def planned_changes(args, area_reg, device_mode):
-    """Return {registry_field: new_value} from the command-line flags."""
+def planned_changes(args, area_reg, device_mode, target, labels):
+    """Return {registry_field: new_value} from the command-line flags.
+
+    `labels` is (add, remove) as label_ids; Home Assistant replaces the whole
+    set, so the new set is built from the target's current one.
+    """
     changes = {}
+    add, remove = labels
+    if add or remove:
+        current = set(target.get("labels") or [])
+        changes["labels"] = sorted((current | set(add)) - set(remove))
     if args.name is not None or args.reset_name:
         field = "name_by_user" if device_mode else "name"
         changes[field] = None if args.reset_name else args.name
@@ -432,42 +480,100 @@ def planned_changes(args, area_reg, device_mode):
     return changes
 
 
-def describe(field, value, area_reg):
+def describe(field, value, area_reg, label_reg):
     if field == "area_id" and value:
         return area_label(area_reg, value)
+    if field == "labels":
+        return label_names(label_reg, value)
     return value
 
 
+def same(field, a, b):
+    # Home Assistant returns labels in no particular order
+    if field == "labels":
+        return set(a or []) == set(b or [])
+    return a == b
+
+
+# Flags that change one entity; label flags may cover several
+SINGLE_TARGET_FLAGS = (
+    "name",
+    "reset_name",
+    "area",
+    "no_area",
+    "icon",
+    "reset_icon",
+    "hidden",
+    "visible",
+    "disable",
+    "enable",
+)
+
+
 def cmd_update(args):
-    entry = get_registry_entry(args.entity_id)
+    entity_ids = list(dict.fromkeys(args.entity_ids))
+    if len(entity_ids) > 1 and any(
+        getattr(args, f) not in (None, False) for f in SINGLE_TARGET_FLAGS
+    ):
+        raise RuntimeError(
+            "several entity_ids take only --add-label/--remove-label; "
+            "change the other fields one entity at a time"
+        )
     area_reg = ha_result({"type": "config/area_registry/list"}) or []
+    label_reg = label_registry() if args.add_label or args.remove_label else []
+    labels = tuple(
+        [resolve_label(label_reg, v) for v in values or []]
+        for values in (args.add_label, args.remove_label)
+    )
+    devices = (
+        ha_result({"type": "config/device_registry/list"}) or [] if args.device else []
+    )
+    # Every entity is looked up before the first write, so a typo in the
+    # third entity_id cannot leave the first two changed
+    targets = [find_target(eid, args.device, devices) for eid in entity_ids]
+    outputs = [
+        update_one(eid, *target, args, area_reg, label_reg, labels)
+        for eid, target in zip(entity_ids, targets)
+    ]
+    print_output(outputs[0] if len(outputs) == 1 else {"updated": outputs}, args.format)
+    if any(o.get("verified") is False for o in outputs):
+        sys.exit(1)
+
+
+def find_target(entity_id, device_mode, devices):
+    """Return (entry, target, command) for an entity or, with --device, its device."""
+    entry = get_registry_entry(entity_id)
+    if not device_mode:
+        command = {"type": "config/entity_registry/update", "entity_id": entity_id}
+        return entry, entry, command
+    if not entry.get("device_id"):
+        raise RuntimeError(f"'{entity_id}' does not belong to a device")
+    target = next((d for d in devices if d["id"] == entry["device_id"]), None)
+    if target is None:
+        raise RuntimeError(f"device {entry['device_id']} not found")
+    return (
+        entry,
+        target,
+        {"type": "config/device_registry/update", "device_id": target["id"]},
+    )
+
+
+def update_one(entity_id, entry, target, command, args, area_reg, label_reg, labels):
+    """Apply the flags to one entity (or its device); return its report."""
     device_mode = args.device
-
-    if device_mode:
-        if not entry.get("device_id"):
-            raise RuntimeError(f"'{args.entity_id}' does not belong to a device")
-        devices = ha_result({"type": "config/device_registry/list"}) or []
-        target = next((d for d in devices if d["id"] == entry["device_id"]), None)
-        if target is None:
-            raise RuntimeError(f"device {entry['device_id']} not found")
-        command = {"type": "config/device_registry/update", "device_id": target["id"]}
-    else:
-        target = entry
-        command = {"type": "config/entity_registry/update", "entity_id": args.entity_id}
-
-    wanted = planned_changes(args, area_reg, device_mode)
+    wanted = planned_changes(args, area_reg, device_mode, target, labels)
     changes = {}
     for field, value in wanted.items():
         before = target.get(field)
-        if before == value:
+        if same(field, before, value):
             continue
         changes[field] = {
-            "before": describe(field, before, area_reg),
-            "after": describe(field, value, area_reg),
+            "before": describe(field, before, area_reg, label_reg),
+            "after": describe(field, value, area_reg, label_reg),
         }
 
     output = {
-        "entity_id": args.entity_id,
+        "entity_id": entity_id,
         "target": "device" if device_mode else "entity",
     }
     if device_mode:
@@ -477,18 +583,19 @@ def cmd_update(args):
     if not changes:
         output["changes"] = {}
         output["note"] = "already set; nothing to do"
-        print_output(output, args.format)
-        return
+        return output
 
     if args.dry_run:
         output["dry_run"] = True
         output["changes"] = changes
-        print_output(output, args.format)
-        return
+        return output
 
     result = ha_result({**command, **{f: wanted[f] for f in changes}}) or {}
     after_entry = result.get("entity_entry", result) if not device_mode else result
-    mismatched = [f for f in changes if after_entry.get(f) != wanted[f]]
+    if device_mode:
+        # The same device may come up again for another of its entities
+        target.update({f: after_entry.get(f) for f in changes})
+    mismatched = [f for f in changes if not same(f, after_entry.get(f), wanted[f])]
     output["changes"] = changes
     output["verified"] = not mismatched
 
@@ -512,10 +619,7 @@ def cmd_update(args):
         notes.append(f"read-back differs for: {', '.join(mismatched)}")
     if notes:
         output["notes"] = notes
-
-    print_output(output, args.format)
-    if mismatched:
-        sys.exit(1)
+    return output
 
 
 def find_references(entity_id, root=None):
@@ -749,6 +853,11 @@ def main():
     )
     p_list.add_argument("--area", default=None, help="Filter by area name")
     p_list.add_argument(
+        "--label",
+        default=None,
+        help="Filter by label name or id (the entity's own labels, not its device's)",
+    )
+    p_list.add_argument(
         "--state", default=None, help="Filter by state value (e.g. on, off)"
     )
     p_list.add_argument(
@@ -803,13 +912,25 @@ def main():
     p_update = sub.add_parser(
         "update",
         parents=[FORMAT_PARENT],
-        help="Change an entity's (or its device's) name, area, icon, visibility",
+        help="Change an entity's (or its device's) name, area, labels, icon, "
+        "visibility",
     )
-    p_update.add_argument("entity_id")
+    p_update.add_argument(
+        "entity_ids",
+        nargs="+",
+        metavar="entity_id",
+        help="One entity; several only with --add-label/--remove-label",
+    )
     p_update.add_argument(
         "--device",
         action="store_true",
-        help="Apply --name/--area to the entity's device instead of the entity",
+        help="Apply --name/--area/labels to the entity's device instead of the entity",
+    )
+    p_update.add_argument(
+        "--add-label", action="append", metavar="LABEL", help="Label name or id"
+    )
+    p_update.add_argument(
+        "--remove-label", action="append", metavar="LABEL", help="Label name or id"
     )
     name = p_update.add_mutually_exclusive_group()
     name.add_argument("--name", help="Set the display name")

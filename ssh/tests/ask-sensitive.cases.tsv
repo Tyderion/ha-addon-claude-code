@@ -123,6 +123,26 @@ ask	ha-dashboard get my-dash > /tmp/my-dash.backup.json && ha-dashboard delete m
 pass	ha-dashboard set my-dash /tmp/my-dash.json
 pass	ha-dashboard list
 pass	ha-dashboard update my-dash --title "Delete me later"
+# ha-areas delete asks unless it is a dry run; create, update, show and list pass
+ask	ha-areas delete area Storage
+ask	ha-areas delete label night
+ask	ha-areas delete floor "First Floor"
+ask	ha-areas show area Storage && ha-areas delete area Storage
+ask	ha-areas delete area Storage --dry-run; ha-areas delete area Storage
+ask	ha-areas delete area Storage # --dry-run
+ask	bash -c "ha-areas delete area Storage"
+ask	python3 /usr/local/bin/ha-areas.py delete area Storage
+ask	for a in storage tech; do ha-areas delete area "$a"; done
+ask	ha-areas list labels --format json | jq -r '.labels[].label_id' | xargs -n1 ha-areas delete label
+ask	ha-ar\eas delete area Storage
+ask	ha-areas del\ete area Storage
+pass	ha-areas delete area Storage --dry-run
+pass	ha-areas list
+pass	ha-areas show label night
+pass	ha-areas create area "Guest Room" --floor "First Floor"
+pass	ha-areas update area Kitchen --name Pantry
+pass	ha-areas update area Kitchen --add-label night
+pass	ha-entities update light.a light.b --add-label night
 # The ha CLI: writes ask in every spelling, position and wrapper
 ask	ha apps uninstall core_mosquitto
 ask	ha addons uninstall core_mosquitto

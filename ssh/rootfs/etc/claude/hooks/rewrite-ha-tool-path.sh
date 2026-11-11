@@ -19,7 +19,7 @@
 # ==============================================================================
 set -uo pipefail
 
-readonly TOOLS='ha-entities|ha-integrations|ha-secrets|ha-dashboard|ha-trace|ha-history|ha-system|ha-template|ha-service|ha-state|ha-reload'
+readonly TOOLS='ha-entities|ha-integrations|ha-secrets|ha-dashboard|ha-trace|ha-history|ha-system|ha-areas|ha-template|ha-service|ha-state|ha-reload'
 
 input=$(cat)
 

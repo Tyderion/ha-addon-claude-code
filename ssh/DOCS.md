@@ -468,8 +468,9 @@ Four hooks ship with the app and are registered automatically in
 - **Sensitive-operation prompts** — a `PreToolUse` hook that makes Claude
   ask you first, in auto mode too, before a shell command that names
   `secrets.yaml`, that could write into `.storage` (see above), that
-  changes an entity_id with `ha-entities rename`, or that deletes or
-  disables an integration with `ha-integrations delete` / `disable`. A
+  changes an entity_id with `ha-entities rename`, that deletes or
+  disables an integration with `ha-integrations delete` / `disable`, or
+  that deletes an area, floor or label with `ha-areas delete`. A
   `--dry-run` of any of these, which only reports what would change, runs
   without asking. `ha-secrets get` (prints a secret's value),
   `ha-secrets add` (stores a literal value) and any `ha-service` call with
@@ -564,8 +565,8 @@ again; skills you add yourself are never touched.
   automations (`ha-entities`).
 - `FindReferences` — what uses an entity or device: automations, scripts,
   scenes, groups, dashboards and templates (`ha-entities refs`).
-- `UpdateEntity` — rename entities and devices, move them to an area, set
-  icons, hide or disable them, change entity_ids (`ha-entities update` /
+- `UpdateEntity` — rename entities and devices, move them to an area, add
+  or remove labels, set icons, hide or disable them, change entity_ids (`ha-entities update` /
   `rename`), all through the registry API instead of `.storage`.
 - `ManageIntegration` — list integrations and find failing ones, add new
   ones, change their options or connection settings, rename, reload,
@@ -591,6 +592,9 @@ again; skills you add yourself are never touched.
 - `ManageSystem` — list pending updates across Core, OS, apps, HACS and
   firmware and the repairs Home Assistant shows, with their text
   (`ha-system`), and restart, update or read the logs of apps (`ha apps`).
+- `ManageAreas` — list, create, rename and delete areas, floors and labels
+  (`ha-areas`). A rename keeps the old name as an alias, and a delete
+  first lists what loses the area, floor or label and asks you.
 - `EditDashboard` — change dashboards, views and cards (`ha-dashboard`).
 - `ReloadConfig` — apply YAML changes, choosing between `ha-reload`
   and `ha core restart` and validating first.
