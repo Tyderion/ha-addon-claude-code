@@ -45,7 +45,7 @@ file.yaml` for complex payloads (`--data` overrides the file).
 4. **Responses** come back without extra flags: `call` prints `response`
    for services `show` marks `returns_response` (weather forecasts,
    calendar events, todo lists).
-5. **Check what it did**: `call` prints the call's `context_id`. `ha-history logbook --context <id>` (QueryHistory) lists exactly the changes this call caused, the only way to tell them from the user's own clicks, which carry the same user.
+5. **Check what it did**: `call` prints a `context_id`; `ha-history logbook --context <id>` (QueryHistory) lists every change that call caused.
 
 The same `--data` keys translate 1:1 into the `data:` block of
 automation/script YAML, so `show` is enough to write it; a live call is

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ha-history — Query Home Assistant state history and long-term statistics.
+"""ha-history — Query Home Assistant state history, the logbook and long-term statistics.
 
 Usage:
   ha-history changes <entity_id> [<entity_id> ...] [--last 24h | --from ISO [--to ISO]]
@@ -557,7 +557,7 @@ def main():
 
     parser = argparse.ArgumentParser(
         prog="ha-history",
-        description="Query Home Assistant state history and long-term statistics.",
+        description="Query Home Assistant state history, the logbook and long-term statistics.",
     )
     sub = parser.add_subparsers(dest="command", metavar="command", required=True)
 
